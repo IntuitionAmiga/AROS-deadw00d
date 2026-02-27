@@ -7,6 +7,14 @@ include $(SRCDIR)/config/aros.cfg
 #MM- boot-distfiles-ie-m68k : kernel-ie-m68k-rom
 #MM- AROS-ie-m68k : kernel-ie-m68k software-ie-m68k
 
+#MM- kernel-ie-m68k : \
+#MM     kernel-kernel-ie-m68k \
+#MM     kernel-timer-ie-m68k \
+#MM     kernel-ie-m68k-kbd \
+#MM     kernel-ie-m68k-mouse \
+#MM     hidd-m68k-iegfx \
+#MM     kernel-ie-m68k-handler
+
 #MM- software-ie-m68k : general-setup binary-ie-m68k \
 #MM	    workbench-ie-m68k
 
