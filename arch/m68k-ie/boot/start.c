@@ -30,6 +30,7 @@
 #include "exec_intern.h"
 
 #include "ie_hwreg.h"
+#include "ie_irq.h"
 #include "early.h"
 #include "debug.h"
 
@@ -229,6 +230,10 @@ void exec_boot(ULONG *membanks, ULONG *cpupcr)
         Early_Alert(AT_DeadEnd | AG_MakeLib | AO_ExecLib);
 
     ie_puts("[IE] ExecBase ready\n");
+
+    /* Initialize IE interrupt handlers (autovector dispatch) */
+    IEIRQInit(SysBase);
+    ie_puts("[IE] IRQ handlers installed\n");
 
     PrivExecBase(SysBase)->PlatformData.BootMsg = bootmsg;
     SysBase->ThisTask->tc_SPLower = &_ss;
