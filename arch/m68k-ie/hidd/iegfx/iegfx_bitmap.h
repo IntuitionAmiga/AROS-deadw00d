@@ -31,6 +31,7 @@ struct IEGfxBitmapData
     OOP_Object  *gfxhidd;     /* Cached driver object */
     LONG        xoffset;        /* Bitmap offset */
     LONG        yoffset;
+    ULONG       *CLUT;          /* Palette (256 entries) for CLUT8 bitmaps, NULL for RGBA32 */
 };
 
 #endif /* IEGFX_BITMAP_H */

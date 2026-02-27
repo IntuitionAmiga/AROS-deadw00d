@@ -34,10 +34,17 @@
 /* VideoChip status bits */
 #define IE_VIDEO_STATUS_VBLANK  (1 << 1)
 
+/* Color mode values */
+#define IE_COLORMODE_RGBA32     0
+#define IE_COLORMODE_CLUT8      1
+
 /* Hardware functions */
 BOOL IE_VideoInit(void);
 void IE_VideoEnable(BOOL enable);
 void IE_VideoSetMode(UWORD mode);
+void IE_SetColorMode(UWORD mode);
+void IE_SetFBBase(ULONG addr);
+void IE_LoadCLUT(ULONG *palette, UWORD startIndex, UWORD count);
 void IE_BlitCopy(ULONG src, ULONG dst, UWORD width, UWORD height,
                  UWORD src_stride, UWORD dst_stride);
 void IE_BlitFill(ULONG dst, UWORD width, UWORD height,

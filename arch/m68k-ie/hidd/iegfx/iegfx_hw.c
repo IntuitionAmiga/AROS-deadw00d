@@ -38,6 +38,30 @@ void IE_VideoSetMode(UWORD mode)
     ie_write32(IE_VIDEO_MODE, (ULONG)mode);
 }
 
+void IE_SetColorMode(UWORD mode)
+{
+    D(bug("[IEGfx] IE_SetColorMode(%d)\n", mode));
+    ie_write32(IE_VIDEO_COLOR_MODE, (ULONG)mode);
+}
+
+void IE_SetFBBase(ULONG addr)
+{
+    D(bug("[IEGfx] IE_SetFBBase(0x%08lx)\n", addr));
+    ie_write32(IE_VIDEO_FB_BASE, addr);
+}
+
+void IE_LoadCLUT(ULONG *palette, UWORD startIndex, UWORD count)
+{
+    UWORD i;
+
+    D(bug("[IEGfx] IE_LoadCLUT(start=%d, count=%d)\n", startIndex, count));
+
+    for (i = 0; i < count; i++)
+    {
+        ie_write32(IE_VIDEO_PAL_ENTRY(startIndex + i), palette[i]);
+    }
+}
+
 void IE_BlitCopy(ULONG src, ULONG dst, UWORD width, UWORD height,
                  UWORD src_stride, UWORD dst_stride)
 {

@@ -26,6 +26,14 @@
 #define IE_VIDEO_MODE_1024x768  0x02
 #define IE_VIDEO_MODE_1280x960  0x03
 
+/* CLUT8 Palette Mode (0xF0078 - 0xF0487) */
+#define IE_VIDEO_PAL_INDEX      0xF0078     /* Palette write index (0-255) */
+#define IE_VIDEO_PAL_DATA       0xF007C     /* Palette data (0x00RRGGBB, auto-increments) */
+#define IE_VIDEO_COLOR_MODE     0xF0080     /* 0=RGBA32 (direct), 1=CLUT8 (indexed) */
+#define IE_VIDEO_FB_BASE        0xF0084     /* Framebuffer base address (default 0x100000) */
+#define IE_VIDEO_PAL_TABLE      0xF0088     /* 256x4-byte direct palette access */
+#define IE_VIDEO_PAL_ENTRY(x)   (IE_VIDEO_PAL_TABLE + (x) * 4)
+
 /* Blitter (0xF001C - 0xF0074) */
 #define IE_BLT_CTRL         0xF001C     /* Control: bit 0 = start */
 #define IE_BLT_OP           0xF0020     /* Operation: 0=copy,1=fill,2=line,3=masked,4=alpha,5=mode7 */
@@ -171,6 +179,26 @@
 #define IE_DOS_CMD_SET_FILESIZE 20  /* ARG1=handle, ARG2=size, ARG3=mode */
 #define IE_DOS_CMD_SET_PROTECT  21  /* ARG1=parent, ARG2=name, ARG3=bits */
 #define IE_DOS_CMD_EXAMINE_FH   22  /* ARG1=handle, ARG2=fib_ptr → fills FIB */
+
+/* ========================================================================
+ * Clipboard Bridge (0xF2380 - 0xF239F)
+ * ======================================================================== */
+
+#define IE_CLIP_BASE            0xF2380
+#define IE_CLIP_DATA_PTR        0xF2380     /* Guest RAM pointer for data */
+#define IE_CLIP_DATA_LEN        0xF2384     /* Data length in bytes */
+#define IE_CLIP_CTRL            0xF2388     /* Command: 1=read from host, 2=write to host */
+#define IE_CLIP_STATUS          0xF238C     /* Status: 0=ready, 1=busy, 2=empty, 3=error */
+#define IE_CLIP_RESULT_LEN      0xF2390     /* Bytes actually read/written */
+#define IE_CLIP_FORMAT          0xF2394     /* Format: 0=text, 1=IFF */
+
+#define IE_CLIP_CMD_READ        1
+#define IE_CLIP_CMD_WRITE       2
+
+#define IE_CLIP_STATUS_READY    0
+#define IE_CLIP_STATUS_BUSY     1
+#define IE_CLIP_STATUS_EMPTY    2
+#define IE_CLIP_STATUS_ERROR    3
 
 /* ========================================================================
  * Memory Map

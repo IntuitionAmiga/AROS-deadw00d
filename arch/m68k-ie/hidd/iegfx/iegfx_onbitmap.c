@@ -3,7 +3,7 @@
 
     Desc: Bitmap class for IE Gfx HIDD.
           Displayable bitmaps are allocated in VRAM (0x100000+).
-          IE only supports RGBA32 — no palette or CLUT.
+          Supports RGBA32 (direct color) and CLUT8 (256-color palette).
 */
 
 #define __OOP_NOATTRBASES__
@@ -41,6 +41,7 @@ OOP_Object *METHOD(IEBitMap, Root, New)
         struct IEGfxBitmapData *data;
         HIDDT_ModeID            modeid;
         OOP_Object              *sync, *pf;
+        IPTR                    colormodel;
         struct TagItem attrs[] = {
             { aHidd_ChunkyBM_Buffer, 0 },
             { TAG_DONE, 0UL }
@@ -59,6 +60,20 @@ OOP_Object *METHOD(IEBitMap, Root, New)
         data->height        = OOP_GET(o, aHidd_BitMap_Height);
         data->bytesperline  = OOP_GET(o, aHidd_BitMap_BytesPerRow);
         data->bytesperpix   = OOP_GET(data->pixfmtobj, aHidd_PixFmt_BytesPerPixel);
+
+        /* Detect palette mode and allocate CLUT */
+        OOP_GetAttr(data->pixfmtobj, aHidd_PixFmt_ColorModel, &colormodel);
+        data->CLUT = NULL;
+
+        if (colormodel == vHidd_ColorModel_Palette)
+        {
+            struct IEGfx_staticdata *xsd = XSD(cl);
+
+            D(bug("[IEBitMap] Palette bitmap — allocating CLUT\n"));
+            data->CLUT = AllocVecPooled(xsd->mempool, 256 * sizeof(ULONG));
+            if (data->CLUT)
+                memset(data->CLUT, 0, 256 * sizeof(ULONG));
+        }
 
         D(bug("[IEBitMap] Bitmap %ld x %ld, %u bytes per pixel, %u bytes per line\n",
                 data->width, data->height, data->bytesperpix, data->bytesperline));
@@ -122,14 +137,20 @@ OOP_Object *METHOD(IEBitMap, Root, New)
 
 VOID METHOD(IEBitMap, Root, Dispose)
 {
+    struct IEGfxBitmapData *data = OOP_INST_DATA(cl, o);
+
     D(bug("[IEBitMap] Dispose(0x%p)\n", o));
 
     /*
+     * Free CLUT if allocated. CLUT is pool-allocated so we can free it.
      * VRAM-allocated buffers use a bump allocator — no individual free.
-     * Pool-allocated buffers would need FreeVecPooled, but we don't track
-     * which allocator was used. For now, this is acceptable — VRAM is
-     * reclaimed on driver dispose (which resets the bump pointer).
      */
+    if (data->CLUT)
+    {
+        struct IEGfx_staticdata *xsd = XSD(cl);
+        FreeVecPooled(xsd->mempool, data->CLUT);
+        data->CLUT = NULL;
+    }
 
     OOP_DoSuperMethod(cl, o, (OOP_Msg)msg);
 }
@@ -159,4 +180,45 @@ VOID METHOD(IEBitMap, Root, Get)
         }
     }
     OOP_DoSuperMethod(cl, o, (OOP_Msg)msg);
+}
+
+/*********** BitMap::SetColors() ********************************/
+
+BOOL METHOD(IEBitMap, Hidd_BitMap, SetColors)
+{
+    struct IEGfxBitmapData *data = OOP_INST_DATA(cl, o);
+    UWORD i;
+
+    /* Let superclass handle the colormap update first */
+    if (!OOP_DoSuperMethod(cl, o, (OOP_Msg)msg))
+        return FALSE;
+
+    if (!data->CLUT)
+        return TRUE;
+
+    /* Convert 16-bit AROS colors to 0x00RRGGBB and store in CLUT */
+    for (i = 0; i < msg->numColors; i++)
+    {
+        UWORD idx = msg->firstColor + i;
+        if (idx >= 256)
+            break;
+
+        UBYTE r = msg->colors[i].red   >> 8;
+        UBYTE g = msg->colors[i].green >> 8;
+        UBYTE b = msg->colors[i].blue  >> 8;
+
+        data->CLUT[idx] = ((ULONG)r << 16) | ((ULONG)g << 8) | (ULONG)b;
+    }
+
+    /* If this bitmap is currently visible, upload palette to hardware */
+    {
+        struct IEGfx_staticdata *xsd = XSD(cl);
+        if (xsd->visible == o)
+        {
+            IE_LoadCLUT(data->CLUT + msg->firstColor,
+                        msg->firstColor, msg->numColors);
+        }
+    }
+
+    return TRUE;
 }

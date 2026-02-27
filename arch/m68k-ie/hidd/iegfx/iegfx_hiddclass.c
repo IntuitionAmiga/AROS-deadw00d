@@ -84,7 +84,28 @@ OOP_Object *METHOD(IEGfx, Root, New)
         { TAG_DONE, 0UL }
     };
 
+    struct TagItem pftags_8bpp[] = {
+        { aHidd_PixFmt_RedShift,        0       },
+        { aHidd_PixFmt_GreenShift,      0       },
+        { aHidd_PixFmt_BlueShift,       0       },
+        { aHidd_PixFmt_AlphaShift,      0       },
+        { aHidd_PixFmt_RedMask,         0x00FF0000 },
+        { aHidd_PixFmt_GreenMask,       0x0000FF00 },
+        { aHidd_PixFmt_BlueMask,        0x000000FF },
+        { aHidd_PixFmt_AlphaMask,       0x00000000 },
+        { aHidd_PixFmt_ColorModel,      vHidd_ColorModel_Palette },
+        { aHidd_PixFmt_CLUTMask,        0xFF    },
+        { aHidd_PixFmt_CLUTShift,       0       },
+        { aHidd_PixFmt_Depth,           8       },
+        { aHidd_PixFmt_BytesPerPixel,   1       },
+        { aHidd_PixFmt_BitsPerPixel,    8       },
+        { aHidd_PixFmt_StdPixFmt,       vHidd_StdPixFmt_LUT8 },
+        { aHidd_PixFmt_BitMapType,      vHidd_BitMapType_Chunky },
+        { TAG_DONE, 0UL }
+    };
+
     struct TagItem modetags[] = {
+        { aHidd_Gfx_PixFmtTags, (IPTR)pftags_8bpp   },
         { aHidd_Gfx_PixFmtTags, (IPTR)pftags_32bpp  },
         { TAG_MORE,             (IPTR)syncs },
         { TAG_DONE, 0UL }
@@ -252,6 +273,13 @@ void METHOD(IEGfx, Hidd_Gfx, CopyBox)
         struct IEGfxBitmapData *bm_src = OOP_INST_DATA(OOP_OCLASS(msg->src), msg->src);
         struct IEGfxBitmapData *bm_dst = OOP_INST_DATA(OOP_OCLASS(msg->dest), msg->dest);
 
+        /* HW blitter only supports RGBA32 — CLUT8 bitmaps use software path */
+        if (bm_src->bytesperpix != 4 || bm_dst->bytesperpix != 4)
+        {
+            OOP_DoSuperMethod(cl, o, (OOP_Msg)msg);
+            return;
+        }
+
         ULONG src_offset = (ULONG)bm_src->VideoData +
                            msg->srcY * bm_src->bytesperline +
                            msg->srcX * bm_src->bytesperpix;
@@ -277,8 +305,23 @@ OOP_Object *METHOD(IEGfx, Hidd_Gfx, Show)
     {
         struct IEGfxBitmapData *bmdata = OOP_INST_DATA(data->bmclass, msg->bitMap);
 
-        D(bug("[IEGfx] Showing bitmap at VideoData=%p (%ldx%ld)\n",
-              bmdata->VideoData, bmdata->width, bmdata->height));
+        D(bug("[IEGfx] Showing bitmap at VideoData=%p (%ldx%ld, %d bpp)\n",
+              bmdata->VideoData, bmdata->width, bmdata->height, bmdata->bytesperpix));
+
+        /* Set framebuffer base to this bitmap's VRAM address */
+        IE_SetFBBase((ULONG)bmdata->VideoData);
+
+        if (bmdata->CLUT)
+        {
+            /* CLUT8 bitmap — upload palette and set indexed mode */
+            IE_LoadCLUT(bmdata->CLUT, 0, 256);
+            IE_SetColorMode(IE_COLORMODE_CLUT8);
+        }
+        else
+        {
+            /* RGBA32 bitmap — direct color mode */
+            IE_SetColorMode(IE_COLORMODE_RGBA32);
+        }
 
         /* Set 640x480 mode and enable the VideoChip */
         IE_VideoSetMode(IE_MODE_640x480);
