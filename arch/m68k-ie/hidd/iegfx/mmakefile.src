@@ -1,0 +1,18 @@
+
+include $(SRCDIR)/config/aros.cfg
+
+#MM hidd-m68k-iegfx : kernel-hidd-gfx-includes devs-monitors-wrapper
+
+USER_LDFLAGS := -static
+
+USER_INCLUDES := -I$(SRCDIR)/arch/$(CPU)-$(ARCH)/include
+
+IEGFX_HIDD_SOURCES := \
+        iegfx_init \
+        iegfx_hw \
+        iegfx_hiddclass \
+        iegfx_onbitmap
+
+%build_module mmake=hidd-m68k-iegfx \
+  modname=iegfx modtype=hidd \
+  files=$(IEGFX_HIDD_SOURCES)

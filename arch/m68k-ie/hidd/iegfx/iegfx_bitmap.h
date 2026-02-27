@@ -1,0 +1,36 @@
+/*
+    Copyright (C) 2026, The AROS Development Team. All rights reserved.
+
+    Desc: Intuition Engine Graphics bitmap header.
+*/
+
+#ifndef IEGFX_BITMAP_H
+#define IEGFX_BITMAP_H
+
+#include "iegfx_hidd.h"
+#include "iegfx_hw.h"
+
+#include <hidd/gfx.h>
+
+#define IS_BM_ATTR(attr, idx) ( ( (idx) = (attr) - HiddBitMapAttrBase) < num_Hidd_BitMap_Attrs)
+
+/*
+   This structure is used as instance data for the bitmap class.
+   Much simpler than SAGA — IE only supports RGBA32, no palette modes,
+   no PLL, and no complex timing registers.
+*/
+struct IEGfxBitmapData
+{
+    UBYTE       *VideoData;     /* Framebuffer pointer (in VRAM) */
+    LONG        width;          /* Bitmap size */
+    LONG        height;
+    UBYTE       bytesperpix;
+    ULONG       bytesperline;
+    BYTE        disp;           /* !=0 - displayable */
+    OOP_Object  *pixfmtobj;    /* Cached pixelformat object */
+    OOP_Object  *gfxhidd;     /* Cached driver object */
+    LONG        xoffset;        /* Bitmap offset */
+    LONG        yoffset;
+};
+
+#endif /* IEGFX_BITMAP_H */

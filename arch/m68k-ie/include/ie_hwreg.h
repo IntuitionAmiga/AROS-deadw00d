@@ -17,8 +17,14 @@
  * ======================================================================== */
 
 #define IE_VIDEO_CTRL       0xF0000     /* Control: bit 0 = enable */
-#define IE_VIDEO_MODE       0xF0002     /* Display mode */
-#define IE_VIDEO_STATUS     0xF0004     /* Status: bit 1 = vblank */
+#define IE_VIDEO_MODE       0xF0004     /* Display mode (32-bit register) */
+#define IE_VIDEO_STATUS     0xF0008     /* Status: bit 1 = vblank */
+
+/* Video mode values (written to IE_VIDEO_MODE) */
+#define IE_VIDEO_MODE_640x480   0x00
+#define IE_VIDEO_MODE_800x600   0x01
+#define IE_VIDEO_MODE_1024x768  0x02
+#define IE_VIDEO_MODE_1280x960  0x03
 
 /* Blitter (0xF001C - 0xF0074) */
 #define IE_BLT_CTRL         0xF001C     /* Control: bit 0 = start */
