@@ -13,7 +13,9 @@ include $(SRCDIR)/config/aros.cfg
 #MM     kernel-ie-m68k-kbd \
 #MM     kernel-ie-m68k-mouse \
 #MM     hidd-m68k-iegfx \
-#MM     kernel-ie-m68k-handler
+#MM     kernel-ie-m68k-handler \
+#MM     kernel-ie-m68k-audio \
+#MM     kernel-ie-m68k-ahidrv
 
 #MM- software-ie-m68k : general-setup binary-ie-m68k \
 #MM	    workbench-ie-m68k

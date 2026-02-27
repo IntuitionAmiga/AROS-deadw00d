@@ -23,6 +23,7 @@ include $(SRCDIR)/config/aros.cfg
 #MM     kernel-fs-con-kobj \
 #MM     kernel-fs-ram-kobj \
 #MM     kernel-ie-m68k-handler-kobj \
+#MM     kernel-ie-m68k-audio-kobj \
 #MM     kernel-graphics-kobj \
 #MM     kernel-hidd-kobj \
 #MM     kernel-hidd-gfx-kobj \
@@ -103,7 +104,7 @@ AFILES=rom_entry rom_init superstack_swap
 # =============================================
 
 KLIBS   := exec aros dos utility oop expansion debug
-KDEVS   := timer input keyboard console
+KDEVS   := timer input keyboard console audio
 KHNDLRS := con ram iehandler
 KHIDDS  := iekbd iemouse iegfx gfx hiddclass inputclass keyboard mouse
 KRSRCS  := kernel processor task lddemon dosboot FileSystem misc shell bootloader

@@ -7,6 +7,7 @@
           level mapping to exactly one source:
 
             Level 2 (vector 26) = Input devices (keyboard/mouse)
+            Level 3 (vector 27) = Audio DMA (Paula-compatible)
             Level 4 (vector 28) = VBL (display vertical blank, 60Hz)
             Level 5 (vector 29) = System timer (5ms tick, 200Hz)
 
@@ -62,6 +63,7 @@
         ); \
 
 DECLARE_TrapCode(IE_Level_2);
+DECLARE_TrapCode(IE_Level_3);
 DECLARE_TrapCode(IE_Level_4);
 DECLARE_TrapCode(IE_Level_5);
 DECLARE_TrapCode(IE_Level_7);
@@ -75,6 +77,34 @@ BOOL IE_Level_2(VOID)
     const UWORD mask = (1 << INTB_PORTS);
 
     core_Cause(INTB_PORTS, mask);
+
+    return TRUE;
+}
+
+/*
+ * Level 3: Audio DMA (Paula-compatible).
+ * Reads IE_AUD_STATUS to determine which channels completed,
+ * clears the handled bits, and calls core_Cause for each.
+ * Maps to ExecBase IntVects[INTB_AUD0..INTB_AUD3].
+ */
+BOOL IE_Level_3(VOID)
+{
+    volatile unsigned long *status_reg = (volatile unsigned long *)0xF22A4;
+    ULONG status = *status_reg;
+
+    if (status & 0x0F) {
+        /* Write-to-clear the handled bits */
+        *status_reg = status & 0x0F;
+
+        if (status & (1 << 0))
+            core_Cause(INTB_AUD0, 1 << INTB_AUD0);
+        if (status & (1 << 1))
+            core_Cause(INTB_AUD1, 1 << INTB_AUD1);
+        if (status & (1 << 2))
+            core_Cause(INTB_AUD2, 1 << INTB_AUD2);
+        if (status & (1 << 3))
+            core_Cause(INTB_AUD3, 1 << INTB_AUD3);
+    }
 
     return TRUE;
 }
@@ -121,6 +151,7 @@ BOOL IE_Level_7(VOID)
  */
 const struct M68KException IEExceptionTable[] = {
     { .Id = 26, .Handler = IE_Level_2_TrapCode },
+    { .Id = 27, .Handler = IE_Level_3_TrapCode },
     { .Id = 28, .Handler = IE_Level_4_TrapCode },
     { .Id = 29, .Handler = IE_Level_5_TrapCode },
     { .Id = 31, .Handler = IE_Level_7_TrapCode },

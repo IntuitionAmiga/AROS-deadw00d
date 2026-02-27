@@ -90,6 +90,50 @@
 #define IE_FLEX_OFF_DAC     0x3C        /* DAC mode: signed int8 sample */
 
 /* ========================================================================
+ * Audio DMA (0xF2260 - 0xF22AF) — Paula-compatible DMA emulation
+ * ======================================================================== */
+
+#define IE_AUD_BASE         0xF2260
+
+/* Per-channel registers (4 channels × 16 bytes) */
+#define IE_AUD_CH0_PTR      0xF2260     /* Sample pointer in guest RAM */
+#define IE_AUD_CH0_LEN      0xF2264     /* Length in words (×2 = bytes) */
+#define IE_AUD_CH0_PER      0xF2268     /* Period (PAULA_CLOCK / freq) */
+#define IE_AUD_CH0_VOL      0xF226C     /* Volume (0-64) */
+
+#define IE_AUD_CH1_PTR      0xF2270
+#define IE_AUD_CH1_LEN      0xF2274
+#define IE_AUD_CH1_PER      0xF2278
+#define IE_AUD_CH1_VOL      0xF227C
+
+#define IE_AUD_CH2_PTR      0xF2280
+#define IE_AUD_CH2_LEN      0xF2284
+#define IE_AUD_CH2_PER      0xF2288
+#define IE_AUD_CH2_VOL      0xF228C
+
+#define IE_AUD_CH3_PTR      0xF2290
+#define IE_AUD_CH3_LEN      0xF2294
+#define IE_AUD_CH3_PER      0xF2298
+#define IE_AUD_CH3_VOL      0xF229C
+
+/* Global registers */
+#define IE_AUD_DMACON       0xF22A0     /* DMA control: bit 15=set/clear, bits 0-3=channels */
+#define IE_AUD_STATUS       0xF22A4     /* Completion status: bits 0-3, write-to-clear */
+#define IE_AUD_INTENA       0xF22A8     /* Interrupt enable: bit 15=set/clear, bits 0-3 */
+
+/* Per-channel register stride */
+#define IE_AUD_CH_STRIDE    16
+
+/* Per-channel register offsets */
+#define IE_AUD_OFF_PTR      0x00
+#define IE_AUD_OFF_LEN      0x04
+#define IE_AUD_OFF_PER      0x08
+#define IE_AUD_OFF_VOL      0x0C
+
+/* Compute channel N base address */
+#define IE_AUD_CH_BASE(n)   (IE_AUD_BASE + (n) * IE_AUD_CH_STRIDE)
+
+/* ========================================================================
  * AROS DOS Handler MMIO (0xF2220 - 0xF225F)
  * ======================================================================== */
 
