@@ -1,0 +1,8 @@
+
+include $(SRCDIR)/config/aros.cfg
+
+USER_INCLUDES := -I$(SRCDIR)/arch/$(CPU)-$(ARCH)/include
+
+%build_module mmake=kernel-ie-m68k-handler \
+    modname=iehandler modtype=handler \
+    files="handler" uselibs="amiga"

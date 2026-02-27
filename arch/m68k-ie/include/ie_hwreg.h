@@ -90,6 +90,45 @@
 #define IE_FLEX_OFF_DAC     0x3C        /* DAC mode: signed int8 sample */
 
 /* ========================================================================
+ * AROS DOS Handler MMIO (0xF2220 - 0xF225F)
+ * ======================================================================== */
+
+#define IE_DOS_BASE         0xF2220
+
+#define IE_DOS_CMD          0xF2220     /* Command code (write triggers action) */
+#define IE_DOS_ARG1         0xF2224     /* Argument 1 (pointer or value) */
+#define IE_DOS_ARG2         0xF2228     /* Argument 2 */
+#define IE_DOS_ARG3         0xF222C     /* Argument 3 */
+#define IE_DOS_ARG4         0xF2230     /* Argument 4 */
+#define IE_DOS_RESULT1      0xF2234     /* Primary result (dp_Res1) */
+#define IE_DOS_RESULT2      0xF2238     /* Secondary result / IoErr (dp_Res2) */
+#define IE_DOS_STATUS       0xF223C     /* Status: 0=ready */
+
+/* DOS command codes (written to IE_DOS_CMD) */
+#define IE_DOS_CMD_LOCK         1   /* ARG1=name, ARG2=parent, ARG3=mode → R1=key */
+#define IE_DOS_CMD_UNLOCK       2   /* ARG1=key */
+#define IE_DOS_CMD_EXAMINE      3   /* ARG1=key, ARG2=fib_ptr → fills FIB */
+#define IE_DOS_CMD_EXNEXT       4   /* ARG1=key, ARG2=fib_ptr → next entry */
+#define IE_DOS_CMD_FINDINPUT    5   /* ARG1=name, ARG2=parent → R1=handle */
+#define IE_DOS_CMD_FINDOUTPUT   6   /* ARG1=name, ARG2=parent → R1=handle */
+#define IE_DOS_CMD_FINDUPDATE   7   /* ARG1=name, ARG2=parent → R1=handle */
+#define IE_DOS_CMD_READ         8   /* ARG1=handle, ARG2=buf, ARG3=len → R1=read */
+#define IE_DOS_CMD_WRITE        9   /* ARG1=handle, ARG2=buf, ARG3=len → R1=written */
+#define IE_DOS_CMD_SEEK         10  /* ARG1=handle, ARG2=offset, ARG3=mode → R1=old */
+#define IE_DOS_CMD_CLOSE        11  /* ARG1=handle */
+#define IE_DOS_CMD_PARENT       12  /* ARG1=key → R1=parent_key */
+#define IE_DOS_CMD_DELETE       13  /* ARG1=parent, ARG2=name */
+#define IE_DOS_CMD_CREATEDIR    14  /* ARG1=parent, ARG2=name → R1=key */
+#define IE_DOS_CMD_RENAME       15  /* ARG1-4: src/dst parent+name */
+#define IE_DOS_CMD_DISKINFO     16  /* ARG1=info_ptr → fills InfoData */
+#define IE_DOS_CMD_DUPLOCK      17  /* ARG1=key → R1=new_key */
+#define IE_DOS_CMD_SAMELOCK     18  /* ARG1=key1, ARG2=key2 → R1=result */
+#define IE_DOS_CMD_IS_FS        19  /* → R1=DOSTRUE */
+#define IE_DOS_CMD_SET_FILESIZE 20  /* ARG1=handle, ARG2=size, ARG3=mode */
+#define IE_DOS_CMD_SET_PROTECT  21  /* ARG1=parent, ARG2=name, ARG3=bits */
+#define IE_DOS_CMD_EXAMINE_FH   22  /* ARG1=handle, ARG2=fib_ptr → fills FIB */
+
+/* ========================================================================
  * Memory Map
  * ======================================================================== */
 
