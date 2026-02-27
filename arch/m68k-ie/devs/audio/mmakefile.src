@@ -1,0 +1,10 @@
+
+include $(SRCDIR)/config/aros.cfg
+
+USER_INCLUDES := -I$(SRCDIR)/arch/$(CPU)-$(ARCH)/include
+
+FILES := audio audio_hardware
+
+%build_module mmake=kernel-ie-m68k-audio \
+    modname=audio modtype=device \
+    files="$(FILES)"

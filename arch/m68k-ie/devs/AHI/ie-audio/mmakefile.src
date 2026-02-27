@@ -1,0 +1,10 @@
+
+include $(SRCDIR)/config/aros.cfg
+
+USER_INCLUDES := -I$(SRCDIR)/arch/$(CPU)-$(ARCH)/include
+
+FILES := ie-audio-init ie-audio-main ie-audio-playslave
+
+%build_module mmake=kernel-ie-m68k-ahidrv \
+    modname=ie-audio modtype=library \
+    files="$(FILES)"
