@@ -1,0 +1,14 @@
+
+include $(SRCDIR)/config/aros.cfg
+
+USER_CPPFLAGS += \
+    -D__OOP_NOLIBBASE__ \
+    -D__UTILITY_NOLIBBASE__ \
+    -D__OOP_NOMETHODBASES__ \
+    -D__OOP_NOATTRBASES__
+
+USER_INCLUDES := -I$(SRCDIR)/arch/$(CPU)-$(ARCH)/include
+
+%build_module mmake=kernel-ie-m68k-mouse \
+    modname=iemouse modtype=hidd \
+    files="mouse_init mouseclass" uselibs="hiddstubs"
