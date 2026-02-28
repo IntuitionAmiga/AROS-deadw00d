@@ -2119,6 +2119,39 @@ case "$target_os" in
         aros_target_mkdep="$aros_target_mkdep -D__GNUC__ -Dthumb"
         ;;
 
+    ie*)
+        aros_target_arch="ie"
+        aros_target_mkdep="$aros_target_mkdep -D__GNUC__ -D_AMIGA -DAMIGA"
+        aros_shared_default="no"
+
+        case "$target_cpu" in
+            *m68k*)
+                aros_enable_mmu=no
+                aros_target_cpu="m68k"
+                aros_object_format="m68kelf"
+                aros_flavour="standcompat"
+                gcc_target_cpu="m68020"
+                aros_isa_flags="$""(ISA_MC"$aros_gcc_cpu"_FLAGS)"
+                aros_nowarn_flags="$aros_nowarn_flags NOWARN_VOLATILE_REGISTER_VAR"
+                aros_config_cppflags="$aros_config_cppflags -DNOLIBINLINE"
+                aros_config_cflags="$aros_config_cflags $""(CFLAGS_NO_STRICT_ALIASING) $""(CFLAGS_FREESTANDING) $""(CFLAGS_OMIT_FP) $""(CFLAGS_BUILTIN)"
+                aros_config_cxxflags="$aros_config_cxxflags $""(CFLAGS_NO_STRICT_ALIASING) $""(CFLAGS_FREESTANDING) $""(CFLAGS_OMIT_FP) $""(CFLAGS_BUILTIN)"
+                if test "$optimization" = "default"; then
+                    optimization_level=$toolchain_size_opt_lvl
+                fi
+                aros_config_aflags="$aros_config_aflags"
+                aros_target_strip_flags="-R.comment --strip-debug"
+                aros_nominal_width=640
+                aros_nominal_height=480
+                aros_nominal_depth=8
+                llvm_target_cpu="M68k"
+                ;;
+            *)
+                AC_MSG_ERROR("Unknown CPU for IE target: $target_cpu")
+                ;;
+        esac
+        ;;
+
     amiga*)
         AROS_PROG(GZIP,[gzip])
         host_extra_cfg+="$export_newline""GZIP                          := $GZIP"
