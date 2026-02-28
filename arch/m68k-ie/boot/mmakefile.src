@@ -5,7 +5,7 @@
 
 include $(SRCDIR)/config/aros.cfg
 
-#MM- kernel-link-ie-m68k : \
+#MM- kernel-ie-m68k-rom : \
 #MM     general-setup-ie-m68k \
 #MM     kernel-bsp-objs \
 #MM     kernel-objs \
@@ -108,7 +108,7 @@ KLIBS   := exec aros dos utility oop expansion debug
 KDEVS   := timer input keyboard console audio clipboard
 KHNDLRS := con ram iehandler
 KHIDDS  := iekbd iemouse iegfx gfx hiddclass inputclass keyboard mouse
-KRSRCS  := kernel processor task lddemon dosboot FileSystem misc shell bootloader
+KRSRCS  := kernel processor task lddemon dosboot FileSystem misc shell
 KHOOKS  := romboot alert
 
 KOBJS_rom := $(addprefix $(KOBJSDIR)/,$(addsuffix _library.ko ,$(KLIBS))) \
@@ -161,23 +161,76 @@ ROM_DIR=$(GENDIR)/boot
 
 KOBJ_FORMAT := elf
 
-#MM
+#MM kernel-ie-m68k-rom:
 kernel-ie-m68k-rom: $(ROM_DIR)/$(ROM_ELF) $(ROM_DIR)/$(EXT_ELF)
 
-$(ROM_DIR)/$(ROM_ELF): $(OBJS_rom) $(KOBJS_rom) $(DEPLIBS) $(SRCDIR)/$(CURDIR)/aros-rom.ld
+# Generate linker include files that list objects with their sections
+$(GENDIR)/%_objs.ld: $(SRCDIR)/$(CURDIR)/mmakefile.src
+	$(Q)rm -f $@
+	$(Q)for file in $(OBJS_$*) $(KOBJS_$*); do \
+		echo "$$file(.rodata .rodata.*)" >>$@; \
+		echo "$$file(.text)" >>$@; \
+	done
+
+$(ROM_DIR)/$(ROM_ELF): $(OBJS_rom) $(KOBJS_rom) $(DEPLIBS) $(SRCDIR)/$(CURDIR)/aros-rom.ld $(GENDIR)/rom_objs.ld $(GENDIR)/ext_objs.ld
+	@$(MKDIR) $(ROM_DIR)
 	@$(ECHO) Linking $@...
-	$(TARGET_CC) $(TARGET_SYSROOT) -Wl,-T,$(SRCDIR)/$(CURDIR)/aros-rom.ld \
+	$(TARGET_CC) $(TARGET_SYSROOT) -Wl,-r \
+		-static -nostartfiles -nostdlib \
+		-L$(GENDIR) \
+		-Wl,-T,$(SRCDIR)/$(CURDIR)/aros-rom.ld \
 		-Wl,--defsym,rom_entry=$(ROMLOC_rom) \
 		-Wl,--defsym,ss=$(ROMLOC_ss) \
 		$(OBJS_rom) $(KOBJS_rom) \
 		$(LIBS) -o $@
 
-$(ROM_DIR)/$(EXT_ELF): $(OBJS_ext) $(KOBJS_ext) $(DEPLIBS) $(SRCDIR)/$(CURDIR)/aros-rom.ld
+$(ROM_DIR)/$(EXT_ELF): $(OBJS_ext) $(KOBJS_ext) $(DEPLIBS) $(SRCDIR)/$(CURDIR)/aros-rom.ld $(GENDIR)/rom_objs.ld $(GENDIR)/ext_objs.ld
+	@$(MKDIR) $(ROM_DIR)
 	@$(ECHO) Linking $@...
-	$(TARGET_CC) $(TARGET_SYSROOT) -Wl,-T,$(SRCDIR)/$(CURDIR)/aros-rom.ld \
+	$(TARGET_CC) $(TARGET_SYSROOT) -Wl,-r \
+		-static -nostartfiles -nostdlib \
+		-L$(GENDIR) \
+		-Wl,-T,$(SRCDIR)/$(CURDIR)/aros-rom.ld \
 		-Wl,--defsym,rom_entry=$(ROMLOC_ext) \
 		-Wl,--defsym,ss=$(ROMLOC_ss) \
 		$(OBJS_ext) $(KOBJS_ext) \
 		$(LIBS) -o $@
+
+USER_INCLUDES += $(PRIV_KERNEL_INCLUDES)
+USER_CFLAGS += $(CFLAGS_NO_DELETE_NULL_POINTER_CHECKS)
+
+$(KOBJSDIR)/%.o : %.c
+	%compile_q cmd="$(KERNEL_CC)" opt="$(strip $(CFLAGS) $(CPPFLAGS) -I$(AROS_DEVELOPER)/include -I$(GENINCDIR))"
+
+$(KOBJSDIR)/%.o : %.S
+	%compile_q cmd="$(KERNEL_CC)" opt="$(strip $(AFLAGS) $(TARGET_CFLAGS) $(CPPFLAGS) -I$(AROS_DEVELOPER)/include -I$(GENINCDIR))"
+
+$(KOBJSDIR)/%.d : %.c
+	%mkdepend_q
+
+# Localize symbols, so that we don't get name clashes when linking
+#
+# .. except for exec.library. Our boot code needs symbols from it
+#    (PrepareMoveExecBase, InitKickTags, etc)
+%/exec_library.ko: %/exec_library.o
+	$(Q)$(CP) $< $@
+
+# .. except for kernel.resource. Our boot code needs symbols from it
+#    (krnPrepareExecBase and krnCreateMemHeader)
+%/kernel_resource.ko: %/kernel_resource.o
+	$(Q)$(CP) $< $@
+
+# .. except for expansion.library. Our boot code needs symbols from it
+#    (__MemoryTest)
+%/expansion_library.ko: %/expansion_library.o
+	$(Q)$(CP) $< $@
+
+# Localize symbols for everybody else though!
+%.ko: %.o
+	$(Q)$(NM_PLAIN) --defined-only $< | cut -d' ' -f3 >$@.sym
+	$(Q)$(OBJCOPY) --localize-symbols $@.sym $< $@
+
+DEPS		:= $(foreach f, $(FILES), $(TARGETDIR)/$(f).d)
+-include $(DEPS)
 
 %common

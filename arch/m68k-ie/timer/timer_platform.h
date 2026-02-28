@@ -8,7 +8,15 @@
 #ifndef TIMER_PLATFORM_H
 #define TIMER_PLATFORM_H
 
+#include <exec/types.h>
+#include <devices/timer.h>
 #include <graphics/gfxbase.h>
+
+struct PlatformTimer
+{
+    LONG           tb_TimerIRQNum;
+    struct timeval tb_VBlankTime;
+};
 
 void InitCustom(struct GfxBase *gfx);
 

@@ -23,8 +23,7 @@ FILES := \
         sti \
         kernel_debug \
         ie_irq \
-        kernel_globals \
-        dispatch
+        kernel_globals
 
 AFILES=
 

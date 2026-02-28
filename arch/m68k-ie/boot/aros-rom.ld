@@ -37,7 +37,9 @@ INCLUDE rom_objs.ld
                                   _ss_end = .;
                                 } >valid
 
-  /* .bss and .data must not exist in a ROM image */
-  .bss                        : { *(.bss) } >invalid
-  .data                       : { *(.data) } >invalid
+  /* For relocatable link (-r), .bss and .data are gathered here.
+   * The final objcopy --output-target binary strips them.
+   */
+  .bss                        : { *(.bss .bss.*) } >valid
+  .data                       : { *(.data .data.*) } >valid
 }

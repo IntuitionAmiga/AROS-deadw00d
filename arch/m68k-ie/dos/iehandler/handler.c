@@ -16,7 +16,6 @@
 #include <dos/dos.h>
 #include <dos/dosextens.h>
 #include <dos/filehandler.h>
-#include <dos/filesystem.h>
 
 #include <proto/exec.h>
 #include <proto/dos.h>
