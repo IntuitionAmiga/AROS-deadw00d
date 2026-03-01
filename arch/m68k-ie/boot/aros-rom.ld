@@ -3,13 +3,17 @@
  * Adapted from arch/m68k-amiga/boot/aros-rom.ld
  *
  * ROM is loaded at IE_ROM_BASE (0x600000) by the IE loader.
- * The linker places everything at 0x000000 (position-independent
- * offsets); the loader relocates by writing to bus memory at the
- * ROM base address.
+ * org = 0x600000 so the final link produces correct absolute addresses.
+ *
+ * IMPORTANT: .ext must precede .rom so its INCLUDE patterns claim
+ * sections from ext objects BEFORE .rom's *(.text ...) wildcard.
+ * The binary order is controlled by --section-start in the stage 2 link,
+ * not by the order here.  Memory region is deliberately oversized for
+ * the relocatable stage 1 link; stage 2 assigns final addresses.
  */
 
 MEMORY {
-  valid   (rwx) : org = 0x00000000 , l = 2M
+  valid   (rwx) : org = 0x600000 , l = 16M
   invalid (rwx) : org = 0xdead0000 , l = 0x0
 }
 
@@ -23,17 +27,22 @@ INCLUDE ext_objs.ld
 INCLUDE rom_objs.ld
                                   /* Static libs */
                                   *(.text .text.* .rodata .rodata.*)
+                                  /* AROS module initialisation sets */
+                                  *(.aros.set.*)
+                                  __eh_frame_start = .;
                                   *(.eh_frame)
+                                  __eh_frame_end = .;
                                   _rom_end = .;
                                 } >valid
 
-  /* Supervisor stack: 0x800 - 0x1000 (2KB).
-   * Below MEMF_CHIP RAM which starts at 0x1000.
-   * Only used during early boot until a proper stack is allocated.
+  /* Supervisor stack: 8KB.
+   * Used during early boot until a proper stack is allocated.
+   * Must be large enough to survive exception cascades without
+   * overflowing into the vector table (0x000-0x3FF).
    */
   .ss                         : {
                                   _ss = .;
-                                  . = . + 0x800;
+                                  . = . + 0x2000;
                                   _ss_end = .;
                                 } >valid
 

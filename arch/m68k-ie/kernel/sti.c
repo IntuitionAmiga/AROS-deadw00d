@@ -2,8 +2,10 @@
     Copyright (C) 2026, The AROS Development Team. All rights reserved.
 
     Desc: KrnSti — enable interrupts on IE (M68K SR-based).
-          The Amiga version writes to Paula INTENA; the IE has no
-          interrupt controller, so we unmask via the M68K Status Register.
+          Uses TRAP #15 to modify the IPL bits in the status register
+          from either user or supervisor mode.  The trap handler
+          (IE_Trap_Sti, installed by start.c) clears the IPL bits in
+          the saved SR on the exception frame before returning via RTE.
 */
 
 #include <aros/kernel.h>
@@ -20,8 +22,8 @@ AROS_LH0I(void, KrnSti,
 {
     AROS_LIBFUNC_INIT
 
-    /* Clear IPL bits (allow all interrupts) via AND into SR */
-    asm volatile ("andi.w #0xf8ff,%sr\n");
+    /* TRAP #15 → vector 47 → IE_Trap_Sti handler clears IPL */
+    asm volatile ("trap #15\n");
 
     AROS_LIBFUNC_EXIT
 }

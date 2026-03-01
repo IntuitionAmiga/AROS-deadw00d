@@ -14,6 +14,7 @@
 #include <exec/memory.h>
 #include <exec/resident.h>
 #include <exec/execbase.h>
+#include <exec/tasks.h>
 #include <proto/exec.h>
 #include <hardware/cpu/memory.h>
 
@@ -49,6 +50,26 @@ extern struct ExecBase *AbsExecBase;
 
 extern void __attribute__((interrupt)) Exec_Supervisor_Trap (void);
 extern void __attribute__((interrupt)) Exec_Supervisor_Trap_00 (void);
+
+/* TRAP #14/#15 handlers for KrnCli/KrnSti.
+ * These modify the saved SR in the exception frame so that
+ * interrupt masking works from both user and supervisor mode.
+ * 68020 Format 0 exception frame: SR at (%sp), PC at 2(%sp).
+ */
+extern void IE_Trap_Cli(void);
+extern void IE_Trap_Sti(void);
+asm(
+"	.text\n"
+"	.balign 2\n"
+"	.globl IE_Trap_Cli\n"
+"IE_Trap_Cli:\n"
+"	ori.w	#0x0700,(%sp)\n"
+"	rte\n"
+"	.globl IE_Trap_Sti\n"
+"IE_Trap_Sti:\n"
+"	andi.w	#0xf8ff,(%sp)\n"
+"	rte\n"
+);
 
 #define _AS_STRING(x)   #x
 #define AS_STRING(x)    _AS_STRING(x)
@@ -207,7 +228,7 @@ void exec_boot(ULONG *membanks, ULONG *cpupcr)
             attnflags |= AFF_68881 | AFF_68882;
     }
 
-    ie_puts("[IE] CPU: 68020+FPU\n");
+    ie_puts("[IE] CPU: 68020\n");
 
     /* ROM scan regions */
     kickrom[0] = (UWORD*)&_rom_start;
@@ -231,13 +252,32 @@ void exec_boot(ULONG *membanks, ULONG *cpupcr)
 
     ie_puts("[IE] ExecBase ready\n");
 
+    /* PrepareExecBase does not create a bootstrap task — ThisTask is NULL.
+     * M68KExceptionInit (called from IEIRQInit) installs exception handlers
+     * that call FindTask(NULL) which returns SysBase->ThisTask.  If it's
+     * NULL, FindTask returns NULL and the handler reads tc_TrapCode from
+     * address 0x32 (inside the vector table) producing a garbage handler
+     * address, causing an infinite exception cascade.
+     *
+     * Fix: install a minimal static task so FindTask(NULL) returns a valid
+     * pointer with tc_TrapCode==0.  The real bootstrap task is created
+     * later during InitCode(RTF_COLDSTART) in exec_init.c.
+     */
+    {
+        static struct Task earlyBootTask;
+        earlyBootTask.tc_Node.ln_Type = NT_TASK;
+        earlyBootTask.tc_Node.ln_Name = "Early Boot";
+        earlyBootTask.tc_State        = TS_RUN;
+        earlyBootTask.tc_SPLower      = (APTR)&_ss;
+        earlyBootTask.tc_SPUpper      = (APTR)&_ss_end;
+        SysBase->ThisTask = &earlyBootTask;
+    }
+
     /* Initialize IE interrupt handlers (autovector dispatch) */
     IEIRQInit(SysBase);
     ie_puts("[IE] IRQ handlers installed\n");
 
     PrivExecBase(SysBase)->PlatformData.BootMsg = bootmsg;
-    SysBase->ThisTask->tc_SPLower = &_ss;
-    SysBase->ThisTask->tc_SPUpper = &_ss_end;
 
     SysBase->SysStkUpper = (APTR)&_ss_end;
     SysBase->SysStkLower = (APTR)&_ss;
@@ -257,10 +297,10 @@ void exec_boot(ULONG *membanks, ULONG *cpupcr)
     EXT_BYTE(SysBase, Exec, SetTaskPri, LVOSetTaskPri);
     EXT_BYTE(SysBase, Exec, AllocSignal, LVOAllocSignal);
 
-    /* Create ROM memory header */
+    /* Create ROM memory header — covers .rom, .ext, .bss, .data sections */
     krnCreateROMHeader("Kickstart ROM",
         (APTR)IE_ROM_BASE,
-        (APTR)(IE_ROM_BASE + 0x100000 - 1)); /* 1MB ROM region */
+        (APTR)(IE_ROM_BASE + 0x200000 - 1)); /* 2MB ROM region */
 
     /* Add remaining memory banks */
     for (i = 2; membanks[i + 1]; i += 2) {
@@ -282,7 +322,32 @@ void exec_boot(ULONG *membanks, ULONG *cpupcr)
     /* Set privilege violation trap for Exec/Supervisor */
     trap[8] = Exec_Supervisor_Trap;
 
-    /* Enable instruction cache */
+    /* KrnCli/KrnSti TRAP handlers — must be after M68KExceptionInit
+     * which installs M68KTrapHelper for vectors 2-63.
+     * TRAP #14 (vector 46) = disable interrupts (IPL=7)
+     * TRAP #15 (vector 47) = enable interrupts (IPL=0)
+     */
+    trap[46] = IE_Trap_Cli;
+    trap[47] = IE_Trap_Sti;
+
+    /* IE has no CPU cache — install no-op cache stubs directly.
+     * The m68k-all C dispatchers for CacheClearU/CacheClearE/CacheControl
+     * call CPU-specific assembly functions via func(), which clobbers A6
+     * (needed by 'jmp Supervisor(%a6)' in the 68020 variants).
+     * Install 68000 no-op variants to bypass the dispatchers entirely.
+     */
+    {
+        extern void AROS_SLIB_ENTRY(CacheClearU_00,Exec,106)(void);
+        extern void AROS_SLIB_ENTRY(CacheClearE_00,Exec,107)(void);
+        extern void AROS_SLIB_ENTRY(CacheControl_00,Exec,108)(void);
+        __AROS_SETVECADDR(SysBase, LVOCacheClearU,
+            AROS_SLIB_ENTRY(CacheClearU_00, Exec, 106));
+        __AROS_SETVECADDR(SysBase, LVOCacheClearE,
+            AROS_SLIB_ENTRY(CacheClearE_00, Exec, 107));
+        __AROS_SETVECADDR(SysBase, LVOCacheControl,
+            AROS_SLIB_ENTRY(CacheControl_00, Exec, 108));
+    }
+
     CacheControl(CACRF_EnableI, CACRF_EnableI);
     CacheClearU();
 

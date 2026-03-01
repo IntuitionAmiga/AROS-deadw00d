@@ -28,26 +28,21 @@ rom_init:
 	lea.l	_ss,%a5
 
 	/* ---- CPU/FPU data ---- */
-	/* IE always provides a full 68020 + 68881/68882 FPU.
-	 * No runtime detection needed — hardcode AttnFlags.
+	/* IE provides a 68020 CPU.  FPU is not yet emulated, so the
+	 * high word of cpupcr[0] is 0 (no FPU).  When FPU emulation
+	 * is added, set the high word to the FPU ID (0x1F = 68881,
+	 * 0x20 = 68882) to enable AROS FPU context save/restore.
 	 *
 	 * AttnFlags layout (low word of cpupcr[0]):
 	 *   bit 0 = AFB_68010
 	 *   bit 1 = AFB_68020
-	 *   bit 2 = AFB_68030
-	 *   bit 3 = AFB_68040
 	 *   bit 13 = AFB_ADDR32
 	 *
-	 * FPU flags (high word of cpupcr[0]):
-	 *   bits 16-23 = FPU ID (0x1F or less = 68881, >0x1F = 68882)
-	 *
 	 * We set: AFB_68010 | AFB_68020 | AFB_ADDR32 = 0x2003
-	 * FPU: 68882 ID = 0x20 in high word → 0x00200000
-	 * Combined: 0x00202003
 	 */
 	move.l	%a5,%a4		/* CPU/FPU data array pointer */
 	lea	16(%a5),%a5	/* Reserve 16 bytes for CPU data + extra membank */
-	move.l	#0x00202003,(%a4)	/* cpupcr[0]: AttnFlags + FPU ID */
+	move.l	#0x00002003,(%a4)	/* cpupcr[0]: AttnFlags (no FPU) */
 	clr.l	4(%a4)			/* cpupcr[1]: PCR = 0 (no PCR on 68020) */
 	clr.l	8(%a4)			/* reserved */
 	clr.l	12(%a4)			/* reserved */
@@ -55,20 +50,26 @@ rom_init:
 	/* ---- Memory bank list ---- */
 	/* IE memory layout (skip I/O holes):
 	 * Bank 1: 0x001000 - 0x09FFFF (636KB, vectors at 0x000-0xFFF)
-	 * Bank 2: 0x100000 - 0x5FFFFF (5MB, VRAM region used as RAM)
+	 * Bank 2: 0x100000 - 0x1FFFFF (1MB fast memory for Exec)
+	 * VRAM:   0x200000 - 0x5FFFFF (4MB, managed by IEGfx HIDD)
 	 * Sentinel: 0, 0
 	 *
 	 * The bank list is {start, size} pairs terminated by {0, 0}.
 	 * Fastest memory first (Bank 2 = "fast", Bank 1 = "chip").
+	 *
+	 * NOTE: VRAM is NOT added to Exec's memory pool. The IEGfx HIDD
+	 * owns 0x200000-0x5FFFFF via a bump allocator. If Exec were given
+	 * this range, its allocations (ExecBase, IRQ handlers, task structs)
+	 * would be overwritten when the first framebuffer is memset-cleared.
 	 */
 
-	/* Bank 2: 5MB fast memory */
+	/* Bank 2: 1MB fast memory (VRAM starts at 0x200000) */
 	move.l	#0x00100000,(%a5)+	/* start */
-	move.l	#0x00500000,(%a5)+	/* size = 5MB */
+	move.l	#0x00100000,(%a5)+	/* size = 1MB */
 
-	/* Bank 1: 636KB chip memory (first 4KB reserved for vectors) */
-	move.l	#0x00001000,(%a5)+	/* start */
-	move.l	#0x0009F000,(%a5)+	/* size = 636KB */
+	/* Bank 1: chip memory (first 8KB+2KB reserved for vectors+supervisor stack) */
+	move.l	#0x00002800,(%a5)+	/* start (after 8KB supervisor stack at 0x800) */
+	move.l	#0x0009D800,(%a5)+	/* size = 630KB */
 
 	/* End-of-list sentinel */
 	clr.l	(%a5)+

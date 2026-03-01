@@ -45,6 +45,21 @@ void Early_Alert(ULONG alert)
     }
 }
 
+/* MagicResetCode: assert RESET on bus, then jump to ROM entry via vector 1.
+ * The CPU is NOT reset by the RESET instruction — only external hardware is.
+ * After RESET we read the initial PC from the exception vector table and jump.
+ */
+asm (
+    "       .text\n"
+    "       .align 4\n"
+    "       .globl Exec_MagicResetCode\n"
+    "Exec_MagicResetCode:\n"
+    "       nop\n"
+    "       move.l 4.w,%a0\n"    /* Fetch initial PC from vector table */
+    "       reset\n"
+    "       jmp    (%a0)\n"
+);
+
 /* Fatal trap for early problems */
 extern void Exec_MagicResetCode(void);
 void __attribute__((interrupt)) Early_TrapHandler(void)

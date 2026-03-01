@@ -22,10 +22,12 @@ rom_start:
 	/* M68K reset vector format:
 	 * Offset 0: Initial SSP (stack pointer)
 	 * Offset 4: Initial PC (program counter)
-	 * The IE loader patches these during LoadROM, but we provide
-	 * sensible defaults here for standalone ROM images.
+	 * These must be data longs, not instructions — the CPU reads
+	 * them as 32-bit addresses on reset, not as executable code.
 	 */
 	.long	0x00020000		/* Initial SSP */
+	.long	rom_init		/* Initial PC  */
+
 _start:
 software_reset:
 	jmp	rom_init

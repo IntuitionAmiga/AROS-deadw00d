@@ -111,5 +111,32 @@ static int IEGfx_Init(LIBBASETYPEPTR LIBBASE)
     return res;
 }
 
+/*
+ * IEGfx_Startup — register the driver with graphics.library.
+ * Called at ADD2INITLIB priority 10 (after class registration at 0).
+ * Without this call, graphics.library/Intuition cannot discover the
+ * IE display driver and screen creation will fail with AN_SysScrnType.
+ */
+static int IEGfx_Startup(LIBBASETYPEPTR LIBBASE)
+{
+    struct GfxBase *GfxBase;
+    ULONG err;
+
+    D(bug("[IEGfx] IEGfx_Startup() — registering display driver\n"));
+
+    GfxBase = (struct GfxBase *)OpenLibrary("graphics.library", 41);
+    if (!GfxBase)
+        return FALSE;
+
+    err = AddDisplayDriverA(LIBBASE->vsd.iegfxclass, NULL, NULL);
+
+    CloseLibrary(&GfxBase->LibNode);
+
+    D(bug("[IEGfx] AddDisplayDriverA() returned %ld\n", err));
+
+    return err ? FALSE : TRUE;
+}
+
 ADD2LIBS((STRPTR)"gfx.hidd", 0, static struct Library *, __gfxbase);
 ADD2INITLIB(IEGfx_Init, 0)
+ADD2INITLIB(IEGfx_Startup, 10)

@@ -61,16 +61,16 @@ OOP_Object *METHOD(IEGfx, Root, New)
 
     /*
      * IE pixel format: RGBA byte order in memory (R at byte 0).
-     * On big-endian M68K, a 32-bit read gives 0xRRGGBBAA:
-     *   R at bits 31:24, G at 23:16, B at 15:8, A at 7:0
-     * AROS StdPixFmt names go LSB→MSB: ABGR32.
-     * Shifts follow byte-position-in-memory convention (byte_index * 8).
+     * The IE bus is little-endian; M68K Write32 byte-swaps to LE.
+     * With RGBA32, M68K pixel value (R<<24)|(G<<16)|(B<<8)|A
+     * byte-swaps to LE memory: byte[0]=R, byte[1]=G, byte[2]=B, byte[3]=A
+     * which matches the VideoChip's expected RGBA byte layout.
      */
     struct TagItem pftags_32bpp[] = {
-        { aHidd_PixFmt_RedShift,        0       },
-        { aHidd_PixFmt_GreenShift,      8       },
-        { aHidd_PixFmt_BlueShift,       16      },
-        { aHidd_PixFmt_AlphaShift,      24      },
+        { aHidd_PixFmt_RedShift,        24      },
+        { aHidd_PixFmt_GreenShift,      16      },
+        { aHidd_PixFmt_BlueShift,       8       },
+        { aHidd_PixFmt_AlphaShift,      0       },
         { aHidd_PixFmt_RedMask,         0xFF000000 },
         { aHidd_PixFmt_GreenMask,       0x00FF0000 },
         { aHidd_PixFmt_BlueMask,        0x0000FF00 },
@@ -79,7 +79,7 @@ OOP_Object *METHOD(IEGfx, Root, New)
         { aHidd_PixFmt_Depth,           32      },
         { aHidd_PixFmt_BytesPerPixel,   4       },
         { aHidd_PixFmt_BitsPerPixel,    32      },
-        { aHidd_PixFmt_StdPixFmt,       vHidd_StdPixFmt_ABGR32 },
+        { aHidd_PixFmt_StdPixFmt,       vHidd_StdPixFmt_RGBA32 },
         { aHidd_PixFmt_BitMapType,      vHidd_BitMapType_Chunky },
         { TAG_DONE, 0UL }
     };

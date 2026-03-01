@@ -206,8 +206,8 @@
 
 #define IE_MAIN_RAM_BASE    0x000000    /* Start of main RAM */
 #define IE_MAIN_RAM_END     0x09EFFF    /* End of main RAM (636KB) */
-#define IE_VRAM_BASE        0x100000    /* Video RAM base (5MB) */
-#define IE_VRAM_SIZE        0x500000    /* Video RAM size */
+#define IE_VRAM_BASE        0x200000    /* Video RAM base (4MB, above 1MB fast memory) */
+#define IE_VRAM_SIZE        0x400000    /* Video RAM size */
 #define IE_ROM_BASE         0x600000    /* AROS ROM load address */
 #define IE_IO_BASE          0xF0000     /* I/O region start */
 #define IE_IO_END           0xFFFFF     /* I/O region end */
@@ -215,12 +215,13 @@
 /* Memory regions for ExecBase initialization.
  * Skip I/O holes at 0xA0000-0xBFFFF (VGA) and 0xF0000-0xFFFFF (MMIO).
  * Bank 1: 0x001000 - 0x09FFFF  (636KB, first 4KB reserved for vectors)
- * Bank 2: 0x100000 - 0x5FFFFF  (5MB, shared with VRAM when not in use)
+ * Bank 2: 0x100000 - 0x1FFFFF  (1MB fast memory for Exec)
+ * VRAM:   0x200000 - 0x5FFFFF  (4MB, managed by IEGfx HIDD bump allocator)
  */
 #define IE_MEM_BANK1_START  0x001000
 #define IE_MEM_BANK1_SIZE   0x09F000    /* 636KB */
 #define IE_MEM_BANK2_START  0x100000
-#define IE_MEM_BANK2_SIZE   0x500000    /* 5MB */
+#define IE_MEM_BANK2_SIZE   0x100000    /* 1MB */
 
 /* ========================================================================
  * Inline register access helpers

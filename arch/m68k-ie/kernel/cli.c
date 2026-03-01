@@ -2,8 +2,10 @@
     Copyright (C) 2026, The AROS Development Team. All rights reserved.
 
     Desc: KrnCli — disable interrupts on IE (M68K SR-based).
-          The Amiga version writes to Paula INTENA; the IE has no
-          interrupt controller, so we mask via the M68K Status Register.
+          Uses TRAP #14 to modify the IPL bits in the status register
+          from either user or supervisor mode.  The trap handler
+          (IE_Trap_Cli, installed by start.c) sets IPL=7 in the saved
+          SR on the exception frame before returning via RTE.
 */
 
 #include <aros/kernel.h>
@@ -20,8 +22,8 @@ AROS_LH0I(void, KrnCli,
 {
     AROS_LIBFUNC_INIT
 
-    /* Set IPL to 7 (mask all interrupts) via OR into SR */
-    asm volatile ("ori.w #0x0700,%sr\n");
+    /* TRAP #14 → vector 46 → IE_Trap_Cli handler sets IPL=7 */
+    asm volatile ("trap #14\n");
 
     AROS_LIBFUNC_EXIT
 }

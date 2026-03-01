@@ -36,6 +36,7 @@ include $(SRCDIR)/config/aros.cfg
 #MM     hidd-m68k-iegfx-kobj \
 #MM     kernel-intuition-kobj \
 #MM     kernel-input-kobj \
+#MM     kernel-gameport-kobj \
 #MM     kernel-keymap-kobj \
 #MM     kernel-keyboard-kobj \
 #MM     kernel-layers-kobj \
@@ -91,7 +92,7 @@ USER_INCLUDES := $(PRIV_KERNEL_INCLUDES) \
 # IE uses 68020 instruction set
 TARGET_ISA_AFLAGS := $(ISA_MC68020_FLAGS)
 
-# Supervisor stack at 0x800 (below MEMF_CHIP at 0x1000)
+# Supervisor stack at 0x800 (8KB, below MEMF_CHIP at 0x2800)
 ROMLOC_ss  := 0x0000800
 
 # ROM location — IE loads ROM at 0x600000
@@ -105,7 +106,7 @@ AFILES=rom_entry rom_init superstack_swap
 # =============================================
 
 KLIBS   := exec aros dos utility oop expansion debug
-KDEVS   := timer input keyboard console audio clipboard
+KDEVS   := timer input keyboard gameport console audio clipboard
 KHNDLRS := con ram iehandler
 KHIDDS  := iekbd iemouse iegfx gfx hiddclass inputclass keyboard mouse
 KRSRCS  := kernel processor task lddemon dosboot FileSystem misc shell
@@ -155,14 +156,14 @@ OBJS_ext := $(addprefix $(KOBJSDIR)/,$(addsuffix .o,$(AFILES))) \
 
 ROM_ARCH=ie-m68k
 ROM_ELF=aros-$(ROM_ARCH)-rom.elf
-EXT_ELF=aros-$(ROM_ARCH)-ext.elf
+RELOC_ELF=aros-$(ROM_ARCH)-reloc.elf
 
 ROM_DIR=$(GENDIR)/boot
 
 KOBJ_FORMAT := elf
 
 #MM kernel-ie-m68k-rom:
-kernel-ie-m68k-rom: $(ROM_DIR)/$(ROM_ELF) $(ROM_DIR)/$(EXT_ELF)
+kernel-ie-m68k-rom: $(ROM_DIR)/$(ROM_ELF)
 
 # Generate linker include files that list objects with their sections
 $(GENDIR)/%_objs.ld: $(SRCDIR)/$(CURDIR)/mmakefile.src
@@ -172,29 +173,46 @@ $(GENDIR)/%_objs.ld: $(SRCDIR)/$(CURDIR)/mmakefile.src
 		echo "$$file(.text)" >>$@; \
 	done
 
-$(ROM_DIR)/$(ROM_ELF): $(OBJS_rom) $(KOBJS_rom) $(DEPLIBS) $(SRCDIR)/$(CURDIR)/aros-rom.ld $(GENDIR)/rom_objs.ld $(GENDIR)/ext_objs.ld
+# Stage 1: Relocatable link — all rom + ext objects in one ELF.
+# The linker script organises objects into .rom and .ext sections via
+# the generated INCLUDE files (rom_objs.ld, ext_objs.ld).
+# -Wl,-r produces a relocatable object; relocations are NOT resolved here.
+$(ROM_DIR)/$(RELOC_ELF): $(DEPLIBS) $(SRCDIR)/$(CURDIR)/mmakefile.src \
+	$(OBJS_rom) $(KOBJS_rom) \
+	$(OBJS_ext) $(KOBJS_ext) \
+	$(SRCDIR)/$(CURDIR)/aros-rom.ld \
+	$(GENDIR)/rom_objs.ld \
+	$(GENDIR)/ext_objs.ld
 	@$(MKDIR) $(ROM_DIR)
-	@$(ECHO) Linking $@...
+	@$(ECHO) "Linking $@ [stage 1 - relocatable]..."
 	$(TARGET_CC) $(TARGET_SYSROOT) -Wl,-r \
 		-static -nostartfiles -nostdlib \
 		-L$(GENDIR) \
-		-Wl,-T,$(SRCDIR)/$(CURDIR)/aros-rom.ld \
+		-Wl,-Map,$(ROM_DIR)/$(RELOC_ELF).map \
 		-Wl,--defsym,rom_entry=$(ROMLOC_rom) \
 		-Wl,--defsym,ss=$(ROMLOC_ss) \
-		$(OBJS_rom) $(KOBJS_rom) \
-		$(LIBS) -o $@
-
-$(ROM_DIR)/$(EXT_ELF): $(OBJS_ext) $(KOBJS_ext) $(DEPLIBS) $(SRCDIR)/$(CURDIR)/aros-rom.ld $(GENDIR)/rom_objs.ld $(GENDIR)/ext_objs.ld
-	@$(MKDIR) $(ROM_DIR)
-	@$(ECHO) Linking $@...
-	$(TARGET_CC) $(TARGET_SYSROOT) -Wl,-r \
-		-static -nostartfiles -nostdlib \
-		-L$(GENDIR) \
+		-Wl,--defsym,SysBase=0x4 \
+		-Wl,--defsym,AbsExecBase=0x4 \
 		-Wl,-T,$(SRCDIR)/$(CURDIR)/aros-rom.ld \
-		-Wl,--defsym,rom_entry=$(ROMLOC_ext) \
-		-Wl,--defsym,ss=$(ROMLOC_ss) \
-		$(OBJS_ext) $(KOBJS_ext) \
-		$(LIBS) -o $@
+		$(OBJS_rom) $(KOBJS_rom) $(OBJS_ext) $(KOBJS_ext) \
+		$(LIBS) -lgcc -o $@
+
+# Kernel .bss/.data — place after .ext in ROM area so they land in valid memory.
+# IE bus memory is zero-initialised, so .bss is pre-zeroed.
+ROMLOC_bss  := 0x076C000
+ROMLOC_data := 0x076D000
+
+# Stage 2: Final link — resolve all relocations and assign absolute addresses.
+$(ROM_DIR)/$(ROM_ELF): $(ROM_DIR)/$(RELOC_ELF)
+	@$(ECHO) "Linking $@ [stage 2 - final]..."
+	$(KERNEL_LD) -o $@ \
+		-Map $(ROM_DIR)/$(ROM_ELF).map \
+		--section-start .rom=$(ROMLOC_rom) \
+		--section-start .ext=$(ROMLOC_ext) \
+		--section-start .ss=$(ROMLOC_ss) \
+		--section-start .bss=$(ROMLOC_bss) \
+		--section-start .data=$(ROMLOC_data) \
+		$<
 
 USER_INCLUDES += $(PRIV_KERNEL_INCLUDES)
 USER_CFLAGS += $(CFLAGS_NO_DELETE_NULL_POINTER_CHECKS)
