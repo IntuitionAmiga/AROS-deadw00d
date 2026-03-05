@@ -6,11 +6,11 @@
           to IE flex channel DAC registers for real audio playback.
 */
 
+#include <aros/libcall.h>
 #include <devices/ahi.h>
 #include <dos/dostags.h>
 #include <exec/memory.h>
 #include <libraries/ahi_sub.h>
-#include <proto/ahi_sub.h>
 #include <proto/exec.h>
 #include <proto/dos.h>
 #include <proto/utility.h>
@@ -43,11 +43,13 @@ static const LONG frequencies[] = {
 ** AHIsub_AllocAudio **********************************************************
 ******************************************************************************/
 
-ULONG
-_AHIsub_AllocAudio(struct TagItem         *taglist,
-                   struct AHIAudioCtrlDrv *AudioCtrl,
-                   struct DriverBase      *AHIsubBase)
+AROS_LH2(ULONG, AHIsub_AllocAudio,
+    AROS_LHA(struct TagItem *,         tagList,   A1),
+    AROS_LHA(struct AHIAudioCtrlDrv *, AudioCtrl, A2),
+    struct IEAudioBase *, IEAudioBase, 5, IEAudio)
 {
+    AROS_LIBFUNC_INIT
+
     AudioCtrl->ahiac_DriverData = AllocVec(sizeof(struct IEAudioData),
                                            MEMF_CLEAR | MEMF_PUBLIC);
 
@@ -55,7 +57,7 @@ _AHIsub_AllocAudio(struct TagItem         *taglist,
         dd->slavesignal  = -1;
         dd->mastersignal = AllocSignal(-1);
         dd->mastertask   = (struct Process *)FindTask(NULL);
-        dd->ahisubbase   = (struct IEAudioBase *)AHIsubBase;
+        dd->ahisubbase   = IEAudioBase;
     } else {
         return AHISF_ERROR;
     }
@@ -68,6 +70,8 @@ _AHIsub_AllocAudio(struct TagItem         *taglist,
             AHISF_KNOWSTEREO |
             AHISF_MIXING |
             AHISF_TIMING);
+
+    AROS_LIBFUNC_EXIT
 }
 
 
@@ -75,15 +79,19 @@ _AHIsub_AllocAudio(struct TagItem         *taglist,
 ** AHIsub_FreeAudio ***********************************************************
 ******************************************************************************/
 
-void
-_AHIsub_FreeAudio(struct AHIAudioCtrlDrv *AudioCtrl,
-                  struct DriverBase      *AHIsubBase)
+AROS_LH1(void, AHIsub_FreeAudio,
+    AROS_LHA(struct AHIAudioCtrlDrv *, AudioCtrl, A2),
+    struct IEAudioBase *, IEAudioBase, 6, IEAudio)
 {
+    AROS_LIBFUNC_INIT
+
     if (AudioCtrl->ahiac_DriverData != NULL) {
         FreeSignal(dd->mastersignal);
         FreeVec(AudioCtrl->ahiac_DriverData);
         AudioCtrl->ahiac_DriverData = NULL;
     }
+
+    AROS_LIBFUNC_EXIT
 }
 
 
@@ -91,11 +99,13 @@ _AHIsub_FreeAudio(struct AHIAudioCtrlDrv *AudioCtrl,
 ** AHIsub_Disable *************************************************************
 ******************************************************************************/
 
-void
-_AHIsub_Disable(struct AHIAudioCtrlDrv *AudioCtrl,
-                struct DriverBase      *AHIsubBase)
+AROS_LH1(void, AHIsub_Disable,
+    AROS_LHA(struct AHIAudioCtrlDrv *, AudioCtrl, A2),
+    struct IEAudioBase *, IEAudioBase, 7, IEAudio)
 {
+    AROS_LIBFUNC_INIT
     Forbid();
+    AROS_LIBFUNC_EXIT
 }
 
 
@@ -103,11 +113,13 @@ _AHIsub_Disable(struct AHIAudioCtrlDrv *AudioCtrl,
 ** AHIsub_Enable **************************************************************
 ******************************************************************************/
 
-void
-_AHIsub_Enable(struct AHIAudioCtrlDrv *AudioCtrl,
-               struct DriverBase      *AHIsubBase)
+AROS_LH1(void, AHIsub_Enable,
+    AROS_LHA(struct AHIAudioCtrlDrv *, AudioCtrl, A2),
+    struct IEAudioBase *, IEAudioBase, 8, IEAudio)
 {
+    AROS_LIBFUNC_INIT
     Permit();
+    AROS_LIBFUNC_EXIT
 }
 
 
@@ -115,12 +127,31 @@ _AHIsub_Enable(struct AHIAudioCtrlDrv *AudioCtrl,
 ** AHIsub_Start ***************************************************************
 ******************************************************************************/
 
-ULONG
-_AHIsub_Start(ULONG                   flags,
-              struct AHIAudioCtrlDrv *AudioCtrl,
-              struct DriverBase      *AHIsubBase)
+static void
+StopPlayback(struct AHIAudioCtrlDrv *AudioCtrl, struct IEAudioBase *IEAudioBase)
 {
-    AHIsub_Stop(flags, AudioCtrl);
+    if (dd->slavetask != NULL) {
+        if (dd->slavesignal != -1) {
+            Signal((struct Task *)dd->slavetask,
+                   1L << dd->slavesignal);
+        }
+        Wait(1L << dd->mastersignal);
+    }
+    FreeVec(dd->mixbuffer);
+    dd->mixbuffer = NULL;
+}
+
+AROS_LH2(ULONG, AHIsub_Start,
+    AROS_LHA(ULONG,                    flags,     D0),
+    AROS_LHA(struct AHIAudioCtrlDrv *, AudioCtrl, A2),
+    struct IEAudioBase *, IEAudioBase, 9, IEAudio)
+{
+    AROS_LIBFUNC_INIT
+
+    /* Stop any existing playback first */
+    if (flags & AHISF_PLAY) {
+        StopPlayback(AudioCtrl, IEAudioBase);
+    }
 
     if (flags & AHISF_PLAY) {
         struct TagItem proctags[] = {
@@ -161,6 +192,8 @@ _AHIsub_Start(ULONG                   flags,
     }
 
     return AHIE_OK;
+
+    AROS_LIBFUNC_EXIT
 }
 
 
@@ -168,12 +201,15 @@ _AHIsub_Start(ULONG                   flags,
 ** AHIsub_Update **************************************************************
 ******************************************************************************/
 
-void
-_AHIsub_Update(ULONG                   flags,
-               struct AHIAudioCtrlDrv *AudioCtrl,
-               struct DriverBase      *AHIsubBase)
+AROS_LH2(ULONG, AHIsub_Update,
+    AROS_LHA(ULONG,                    flags,     D0),
+    AROS_LHA(struct AHIAudioCtrlDrv *, AudioCtrl, A2),
+    struct IEAudioBase *, IEAudioBase, 10, IEAudio)
 {
+    AROS_LIBFUNC_INIT
     /* Empty — no hardware state to update between mixes */
+    return 0;
+    AROS_LIBFUNC_EXIT
 }
 
 
@@ -181,24 +217,18 @@ _AHIsub_Update(ULONG                   flags,
 ** AHIsub_Stop ****************************************************************
 ******************************************************************************/
 
-void
-_AHIsub_Stop(ULONG                   flags,
-             struct AHIAudioCtrlDrv *AudioCtrl,
-             struct DriverBase      *AHIsubBase)
+AROS_LH2(void, AHIsub_Stop,
+    AROS_LHA(ULONG,                    flags,     D0),
+    AROS_LHA(struct AHIAudioCtrlDrv *, AudioCtrl, A2),
+    struct IEAudioBase *, IEAudioBase, 11, IEAudio)
 {
+    AROS_LIBFUNC_INIT
+
     if (flags & AHISF_PLAY) {
-        if (dd->slavetask != NULL) {
-            if (dd->slavesignal != -1) {
-                Signal((struct Task *)dd->slavetask,
-                       1L << dd->slavesignal);
-            }
-
-            Wait(1L << dd->mastersignal);
-        }
-
-        FreeVec(dd->mixbuffer);
-        dd->mixbuffer = NULL;
+        StopPlayback(AudioCtrl, IEAudioBase);
     }
+
+    AROS_LIBFUNC_EXIT
 }
 
 
@@ -206,14 +236,16 @@ _AHIsub_Stop(ULONG                   flags,
 ** AHIsub_GetAttr *************************************************************
 ******************************************************************************/
 
-IPTR
-_AHIsub_GetAttr(ULONG                   attribute,
-                LONG                    argument,
-                IPTR                    def,
-                struct TagItem         *taglist,
-                struct AHIAudioCtrlDrv *AudioCtrl,
-                struct DriverBase      *AHIsubBase)
+AROS_LH5(IPTR, AHIsub_GetAttr,
+    AROS_LHA(ULONG,                    attribute, D0),
+    AROS_LHA(LONG,                     argument,  D1),
+    AROS_LHA(IPTR,                     def,       D2),
+    AROS_LHA(struct TagItem *,         tagList,   A1),
+    AROS_LHA(struct AHIAudioCtrlDrv *, AudioCtrl, A2),
+    struct IEAudioBase *, IEAudioBase, 18, IEAudio)
 {
+    AROS_LIBFUNC_INIT
+
     size_t i;
 
     switch (attribute) {
@@ -266,6 +298,8 @@ _AHIsub_GetAttr(ULONG                   attribute,
     default:
         return def;
     }
+
+    AROS_LIBFUNC_EXIT
 }
 
 
@@ -273,11 +307,114 @@ _AHIsub_GetAttr(ULONG                   attribute,
 ** AHIsub_HardwareControl *****************************************************
 ******************************************************************************/
 
-ULONG
-_AHIsub_HardwareControl(ULONG                   attribute,
-                        LONG                    argument,
-                        struct AHIAudioCtrlDrv *AudioCtrl,
-                        struct DriverBase      *AHIsubBase)
+AROS_LH3(LONG, AHIsub_HardwareControl,
+    AROS_LHA(ULONG,                    attribute, D0),
+    AROS_LHA(LONG,                     argument,  D1),
+    AROS_LHA(struct AHIAudioCtrlDrv *, AudioCtrl, A2),
+    struct IEAudioBase *, IEAudioBase, 19, IEAudio)
 {
+    AROS_LIBFUNC_INIT
     return 0;
+    AROS_LIBFUNC_EXIT
+}
+
+
+/******************************************************************************
+** AHIsub_SetVol (stub — software mixing only, no hardware acceleration) *****
+******************************************************************************/
+
+AROS_LH5(ULONG, AHIsub_SetVol,
+    AROS_LHA(UWORD,                    channel,   D0),
+    AROS_LHA(LONG,                     volume,    D1),
+    AROS_LHA(LONG,                     pan,       D2),
+    AROS_LHA(struct AHIAudioCtrlDrv *, AudioCtrl, A2),
+    AROS_LHA(ULONG,                    flags,     D3),
+    struct IEAudioBase *, IEAudioBase, 12, IEAudio)
+{
+    AROS_LIBFUNC_INIT
+    return AHIS_UNKNOWN;
+    AROS_LIBFUNC_EXIT
+}
+
+
+/******************************************************************************
+** AHIsub_SetFreq (stub) *****************************************************
+******************************************************************************/
+
+AROS_LH4(ULONG, AHIsub_SetFreq,
+    AROS_LHA(UWORD,                    channel,   D0),
+    AROS_LHA(ULONG,                    freq,      D1),
+    AROS_LHA(struct AHIAudioCtrlDrv *, AudioCtrl, A2),
+    AROS_LHA(ULONG,                    flags,     D2),
+    struct IEAudioBase *, IEAudioBase, 13, IEAudio)
+{
+    AROS_LIBFUNC_INIT
+    return AHIS_UNKNOWN;
+    AROS_LIBFUNC_EXIT
+}
+
+
+/******************************************************************************
+** AHIsub_SetSound (stub) ****************************************************
+******************************************************************************/
+
+AROS_LH6(ULONG, AHIsub_SetSound,
+    AROS_LHA(UWORD,                    channel,   D0),
+    AROS_LHA(UWORD,                    sound,     D1),
+    AROS_LHA(ULONG,                    offset,    D2),
+    AROS_LHA(LONG,                     length,    D3),
+    AROS_LHA(struct AHIAudioCtrlDrv *, AudioCtrl, A2),
+    AROS_LHA(ULONG,                    flags,     D4),
+    struct IEAudioBase *, IEAudioBase, 14, IEAudio)
+{
+    AROS_LIBFUNC_INIT
+    return AHIS_UNKNOWN;
+    AROS_LIBFUNC_EXIT
+}
+
+
+/******************************************************************************
+** AHIsub_SetEffect (stub) ***************************************************
+******************************************************************************/
+
+AROS_LH2(ULONG, AHIsub_SetEffect,
+    AROS_LHA(APTR,                     effect,    A0),
+    AROS_LHA(struct AHIAudioCtrlDrv *, AudioCtrl, A2),
+    struct IEAudioBase *, IEAudioBase, 15, IEAudio)
+{
+    AROS_LIBFUNC_INIT
+    return AHIS_UNKNOWN;
+    AROS_LIBFUNC_EXIT
+}
+
+
+/******************************************************************************
+** AHIsub_LoadSound (stub) ***************************************************
+******************************************************************************/
+
+AROS_LH4(ULONG, AHIsub_LoadSound,
+    AROS_LHA(UWORD,                    sound,     D0),
+    AROS_LHA(ULONG,                    type,      D1),
+    AROS_LHA(APTR,                     info,      A0),
+    AROS_LHA(struct AHIAudioCtrlDrv *, AudioCtrl, A2),
+    struct IEAudioBase *, IEAudioBase, 16, IEAudio)
+{
+    AROS_LIBFUNC_INIT
+    return AHIS_UNKNOWN;
+    AROS_LIBFUNC_EXIT
+}
+
+
+/******************************************************************************
+** AHIsub_UnloadSound (stub) *************************************************
+******************************************************************************/
+
+AROS_LH2(void, AHIsub_UnloadSound,
+    AROS_LHA(UWORD,                    sound,     D0),
+    AROS_LHA(struct AHIAudioCtrlDrv *, AudioCtrl, A2),
+    struct IEAudioBase *, IEAudioBase, 17, IEAudio)
+{
+    AROS_LIBFUNC_INIT
+    /* Nothing to unload */
+    AROS_LIBFUNC_EXIT
 }

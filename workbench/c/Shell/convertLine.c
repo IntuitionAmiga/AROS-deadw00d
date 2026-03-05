@@ -270,6 +270,9 @@ LONG convertLine(ShellState *ss, Buffer *in, Buffer *out, BOOL *haveCommand)
         return error;
     }
 
+    if (ss->command[2] == '\0')
+        return 0;
+
     *haveCommand = TRUE;
 
     /* PASS 5: redirections */

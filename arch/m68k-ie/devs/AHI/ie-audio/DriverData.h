@@ -16,7 +16,8 @@ struct DriverBase {
     struct ExecBase *execbase;
 };
 
-#define SysBase (AHIsubBase->execbase)
+/* For AROS_LH functions, library base is IEAudioBase (via %build_module basename) */
+#define SysBase (((struct DriverBase *)IEAudioBase)->execbase)
 
 #define DRIVERBASE_SIZEOF (sizeof(struct IEAudioBase))
 

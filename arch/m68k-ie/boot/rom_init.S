@@ -48,27 +48,34 @@ rom_init:
 	clr.l	12(%a4)			/* reserved */
 
 	/* ---- Memory bank list ---- */
-	/* IE memory layout (skip I/O holes):
-	 * Bank 1: 0x001000 - 0x09FFFF (636KB, vectors at 0x000-0xFFF)
-	 * Bank 2: 0x100000 - 0x1FFFFF (1MB fast memory for Exec)
-	 * VRAM:   0x200000 - 0x5FFFFF (4MB, managed by IEGfx HIDD)
+	/* IE memory layout (32MB bus):
+	 * Chip A: 0x002800 - 0x09FFFF (630KB, vectors+stack below)
+	 * I/O:    0x0A0000 - 0x0FFFFF (VGA + MMIO holes, skipped)
+	 * Chip B: 0x100000 - 0x5FFFFF (5MB)
+	 * ROM:    0x600000 - 0x7FFFFF (2MB, AROS ROM image)
+	 * Fast:   0x800000 - 0x1DFFFFF (22MB)
+	 * VRAM:   0x1E00000 - 0x1FFFFFF (2MB, managed by IEGfx HIDD)
 	 * Sentinel: 0, 0
 	 *
 	 * The bank list is {start, size} pairs terminated by {0, 0}.
-	 * Fastest memory first (Bank 2 = "fast", Bank 1 = "chip").
+	 * First bank → ExecBase home (MEMF_FAST in start.c).
+	 * Subsequent banks with addr < 0x800000 → MEMF_CHIP.
+	 * Total: ~5.6MB chip + 22MB fast = ~27.6MB
 	 *
 	 * NOTE: VRAM is NOT added to Exec's memory pool. The IEGfx HIDD
-	 * owns 0x200000-0x5FFFFF via a bump allocator. If Exec were given
-	 * this range, its allocations (ExecBase, IRQ handlers, task structs)
-	 * would be overwritten when the first framebuffer is memset-cleared.
+	 * owns 0x1E00000-0x1FFFFFF via a bump allocator.
 	 */
 
-	/* Bank 2: 1MB fast memory (VRAM starts at 0x200000) */
-	move.l	#0x00100000,(%a5)+	/* start */
-	move.l	#0x00100000,(%a5)+	/* size = 1MB */
+	/* Fast: 22MB (first bank = ExecBase, always MEMF_FAST) */
+	move.l	#0x00800000,(%a5)+	/* start */
+	move.l	#0x01600000,(%a5)+	/* size = 22MB (stops before VRAM at 0x1E00000) */
 
-	/* Bank 1: chip memory (first 8KB+2KB reserved for vectors+supervisor stack) */
-	move.l	#0x00002800,(%a5)+	/* start (after 8KB supervisor stack at 0x800) */
+	/* Chip B: 5MB (addr < 0x800000 → MEMF_CHIP) */
+	move.l	#0x00100000,(%a5)+	/* start */
+	move.l	#0x00500000,(%a5)+	/* size = 5MB (0x100000-0x5FFFFF, below ROM) */
+
+	/* Chip A: 630KB (below VGA hole, addr < 0x800000 → MEMF_CHIP) */
+	move.l	#0x00002800,(%a5)+	/* start (after 10KB supervisor stack) */
 	move.l	#0x0009D800,(%a5)+	/* size = 630KB */
 
 	/* End-of-list sentinel */

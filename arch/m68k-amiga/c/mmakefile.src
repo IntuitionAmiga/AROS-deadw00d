@@ -1,4 +1,5 @@
 # Copyright (C) 2003-2019, The AROS Development Team. All rights reserved.
+#MM- workbench-c-amiga : workbench-c-amiga-m68k
 
 include $(SRCDIR)/config/aros.cfg
 
@@ -8,41 +9,41 @@ USER_CFLAGS := -fno-delete-null-pointer-checks
 USER_AFLAGS := -Os
 TARGET_ISA_AFLAGS:=$(ISA_MC68060_FLAGS)
 
-#MM- workbench-c-m68k : includes \
+#MM- workbench-c-amiga-m68k : includes \
 #MM                     kernel-kernel-includes \
 #MM                     linklibs \
-#MM                     workbench-c-m68k-gdbstub \
-#MM                     workbench-c-m68k-misc \
-#MM                     workbench-c-m68k-setpatcharos \
-#MM                     workbench-c-m68k-arosbootstrap \
-#MM                     workbench-c-m68k-mmudump \
-#MM                     workbench-c-m68k-setpatch
+#MM                     workbench-c-amiga-m68k-gdbstub \
+#MM                     workbench-c-amiga-m68k-misc \
+#MM                     workbench-c-amiga-m68k-setpatcharos \
+#MM                     workbench-c-amiga-m68k-arosbootstrap \
+#MM                     workbench-c-amiga-m68k-mmudump \
+#MM                     workbench-c-amiga-m68k-setpatch
 
-#MM- workbench-c-m68k-quick: workbench-c-m68k-gdbstub-quick \
-#MM                          workbench-c-m68k-misc-quick \
-#MM                          workbench-c-m68k-setpatcharos-quick \
-#MM                          workbench-c-m68k-arosbootstrap-quick \
-#MM                          workbench-c-m68k-mmudump-quick \
-#MM                          workbench-c-m68k-setpatch-quick
+#MM- workbench-c-amiga-m68k-quick: workbench-c-amiga-m68k-gdbstub-quick \
+#MM                          workbench-c-amiga-m68k-misc-quick \
+#MM                          workbench-c-amiga-m68k-setpatcharos-quick \
+#MM                          workbench-c-amiga-m68k-arosbootstrap-quick \
+#MM                          workbench-c-amiga-m68k-mmudump-quick \
+#MM                          workbench-c-amiga-m68k-setpatch-quick
 
-#MM workbench-c-m68k-gdbstub : linklibs-romhack
+#MM workbench-c-amiga-m68k-gdbstub : linklibs-romhack
 
-#MM workbench-c-m68k-arosbootstrap : linklibs-loadseg
+#MM workbench-c-amiga-m68k-arosbootstrap : linklibs-loadseg
 
-#MM workbench-c-m68k-setpatcharos : linklibs-loadseg
-#MM workbench-c-m68k-setpatch : kernel-setpatch-includes kernel-setpatch-linklib
+#MM workbench-c-amiga-m68k-setpatcharos : linklibs-loadseg
+#MM workbench-c-amiga-m68k-setpatch : kernel-setpatch-includes kernel-setpatch-linklib
 
 USER_LDFLAGS := -noclibs
 
 FILES := gdbstub
 
-%build_progs mmake=workbench-c-m68k-gdbstub \
+%build_progs mmake=workbench-c-amiga-m68k-gdbstub \
     files=$(FILES) targetdir=$(AROS_C) \
     detach=yes uselibs="romhack stdc.static" usesdks="private" coverageinstr=no
 
 FILES := gdbstop
 
-%build_progs mmake=workbench-c-m68k-misc \
+%build_progs mmake=workbench-c-amiga-m68k-misc \
     files=$(FILES) targetdir=$(AROS_C) \
     usestartup=no
 
@@ -51,26 +52,26 @@ AFILES := newstackswap
 USER_INCLUDES += -isystem $(SRCDIR)/rom/dos/include
 USER_LDFLAGS  := -noclibs
 
-%build_prog mmake=workbench-c-m68k-setpatcharos progname=SetPatchAROS \
+%build_prog mmake=workbench-c-amiga-m68k-setpatcharos progname=SetPatchAROS \
     files=$(CFILES) asmfiles=$(AFILES) targetdir=$(AROSARCHDIR) \
     uselibs="loadseg stdc.static" coverageinstr=no usesdks="private"
 
 CFILES	      := AROSBootstrap
 
-%build_prog mmake=workbench-c-m68k-arosbootstrap progname=AROSBootstrap \
+%build_prog mmake=workbench-c-amiga-m68k-arosbootstrap progname=AROSBootstrap \
     files=$(CFILES) targetdir=$(AROSARCHDIR) \
     usestartup=no uselibs="loadseg z.static stdc.static" lto=no usesdks="private"
 
 CFILES	      := mmudump
 
-%build_prog mmake=workbench-c-m68k-mmudump progname=MMUDump \
+%build_prog mmake=workbench-c-amiga-m68k-mmudump progname=MMUDump \
     files=$(CFILES) targetdir=$(AROS_C) \
     usestartup=no
 
 CFILES		:= SetPatch
 #USER_INCLUDES := -isystem
 
-%build_prog mmake=workbench-c-m68k-setpatch progname=SetPatch \
+%build_prog mmake=workbench-c-amiga-m68k-setpatch progname=SetPatch \
     files=$(CFILES) targetdir=$(AROS_C) \
     uselibs="setpatch stdc.static" usestartup=no
 
@@ -80,10 +81,10 @@ CFILES	      := test-cas
 TARGET_ISA_CFLAGS := $(ISA_MC68020_FLAGS)
 USER_LDFLAGS  := 
 
-%build_prog mmake=workbench-c-m68k-setpatch-testcas progname=test-CAS \
+%build_prog mmake=workbench-c-amiga-m68k-setpatch-testcas progname=test-CAS \
     files=$(CFILES) targetdir=$(AROS_TESTS)/m68k
 
-#MM- workbench-c-m68k-setpatch-tests : workbench-c-m68k-setpatch-testcas
-#MM- workbench-c-m68k-setpatch-tests-quick : workbench-c-m68k-setpatch-testcas-quick
+#MM- workbench-c-amiga-m68k-setpatch-tests : workbench-c-amiga-m68k-setpatch-testcas
+#MM- workbench-c-amiga-m68k-setpatch-tests-quick : workbench-c-amiga-m68k-setpatch-testcas-quick
 
 %common

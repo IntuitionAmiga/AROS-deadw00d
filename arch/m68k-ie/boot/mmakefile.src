@@ -52,10 +52,12 @@ include $(SRCDIR)/config/aros.cfg
 #MM     kernel-shellcommands-kobj \
 #MM     kernel-timer-kobj \
 #MM     kernel-utility-kobj \
+#MM     kernel-battclock-kobj \
 #MM     kernel-workbook-kobj \
 #MM     workbench-libs-gadtools-kobj \
 #MM     workbench-libs-icon-kobj \
 #MM     workbench-libs-workbench-kobj \
+#MM     workbench-libs-cgfx-kobj \
 #MM     workbench-libs-mathffp-kobj \
 #MM     workbench-libs-mathieeesingbas-kobj \
 #MM     linklibs-loadseg \
@@ -109,7 +111,7 @@ KLIBS   := exec aros dos utility oop expansion debug
 KDEVS   := timer input keyboard gameport console audio clipboard
 KHNDLRS := con ram iehandler
 KHIDDS  := iekbd iemouse iegfx gfx hiddclass inputclass keyboard mouse
-KRSRCS  := kernel processor task lddemon dosboot FileSystem misc shell
+KRSRCS  := kernel processor task lddemon dosboot FileSystem misc shell battclock
 KHOOKS  := romboot alert
 
 KOBJS_rom := $(addprefix $(KOBJSDIR)/,$(addsuffix _library.ko ,$(KLIBS))) \
@@ -131,7 +133,7 @@ $(GENDIR)/boot/aros-ie-m68k-rom.elf: $(KOBJS_rom) $(OBJS_rom)
 FILES   :=
 AFILES  :=
 
-KLIBS   := keymap graphics layers intuition gadtools icon workbench \
+KLIBS   := keymap graphics layers intuition gadtools icon workbench cybergraphics \
            mathffp mathieeesingbas setpatch
 KDEVS   :=
 KHNDLRS :=
@@ -170,7 +172,7 @@ $(GENDIR)/%_objs.ld: $(SRCDIR)/$(CURDIR)/mmakefile.src
 	$(Q)rm -f $@
 	$(Q)for file in $(OBJS_$*) $(KOBJS_$*); do \
 		echo "$$file(.rodata .rodata.*)" >>$@; \
-		echo "$$file(.text)" >>$@; \
+		echo "$$file(.text .text.*)" >>$@; \
 	done
 
 # Stage 1: Relocatable link — all rom + ext objects in one ELF.
@@ -199,8 +201,8 @@ $(ROM_DIR)/$(RELOC_ELF): $(DEPLIBS) $(SRCDIR)/$(CURDIR)/mmakefile.src \
 
 # Kernel .bss/.data — place after .ext in ROM area so they land in valid memory.
 # IE bus memory is zero-initialised, so .bss is pre-zeroed.
-ROMLOC_bss  := 0x076C000
-ROMLOC_data := 0x076D000
+ROMLOC_bss  := 0x0780000
+ROMLOC_data := 0x0784000
 
 # Stage 2: Final link — resolve all relocations and assign absolute addresses.
 $(ROM_DIR)/$(ROM_ELF): $(ROM_DIR)/$(RELOC_ELF)

@@ -308,12 +308,12 @@ void exec_boot(ULONG *membanks, ULONG *cpupcr)
         ULONG size = membanks[i + 1];
 
         mh = ie_addmemoryregion(addr, size,
-            (addr < 0x00100000)
+            (addr < 0x00800000)
                 ? (MEMF_CHIP | MEMF_KICK | MEMF_PUBLIC | MEMF_LOCAL | MEMF_24BITDMA)
                 : (MEMF_FAST | MEMF_KICK | MEMF_PUBLIC | MEMF_LOCAL));
         Enqueue(&SysBase->MemList, &mh->mh_Node);
 
-        if (addr < 0x00200000)
+        if (addr < 0x00800000)
             SysBase->MaxLocMem = (size + 0xffff) & 0xffff0000;
     }
 

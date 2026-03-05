@@ -4,7 +4,7 @@ include $(SRCDIR)/config/aros.cfg
 
 FILES := main locale
 
-#MM- workbench-c : workbench-c-loadresource
+#disabled for IE: workbench-c-loadresource has broken catalog build
 #MM workbench-c-loadresource : includes linklibs \
 #MM     workbench-c-loadresource-catalogs 
 

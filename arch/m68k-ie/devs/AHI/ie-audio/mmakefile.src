@@ -1,7 +1,7 @@
 
 include $(SRCDIR)/config/aros.cfg
 
-USER_INCLUDES := -I$(SRCDIR)/arch/$(CPU)-$(ARCH)/include
+USER_INCLUDES := -I$(SRCDIR)/arch/$(CPU)-$(ARCH)/include -I$(SRCDIR)/workbench/devs/AHI/Include/C
 
 FILES := ie-audio-init ie-audio-main ie-audio-playslave
 

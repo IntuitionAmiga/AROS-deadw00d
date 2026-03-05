@@ -16,8 +16,7 @@
 
 /*
    This structure is used as instance data for the bitmap class.
-   Much simpler than SAGA — IE only supports RGBA32, no palette modes,
-   no PLL, and no complex timing registers.
+   Supports RGBA32 (direct color) and CLUT8 (256-color palette).
 */
 struct IEGfxBitmapData
 {

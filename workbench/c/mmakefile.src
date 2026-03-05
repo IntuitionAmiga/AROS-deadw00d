@@ -84,12 +84,10 @@ USER_CFLAGS      :=
 
 #MM workbench-c : \
 #MM        workbench-c-$(AROS_TARGET_ARCH) \
-#MM        workbench-c-$(AROS_TARGET_CPU) \
 #MM        workbench-c-$(AROS_TARGET_ARCH)-$(AROS_TARGET_CPU)
 
 #MM workbench-c-quick : \
 #MM        workbench-c-$(AROS_TARGET_ARCH)-quick \
-#MM        workbench-c-$(AROS_TARGET_CPU)-quick \
 #MM        workbench-c-$(AROS_TARGET_ARCH)-$(AROS_TARGET_CPU)-quick
 
 #MM workbench-c : \

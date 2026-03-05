@@ -24,6 +24,9 @@
 
 #include "handler.h"
 
+/* File-scope volume pointer — set during handler init, used by lock creators */
+static struct DosList *g_volume;
+
 /* ========================================================================
  * Packet helper functions
  * ======================================================================== */
@@ -118,8 +121,8 @@ static SIPTR HandleLocateObject(struct DosPacket *pkt)
 
     fl->fl_Key = (IPTR)iel;
     fl->fl_Access = pkt->dp_Arg3;
-    fl->fl_Task = pkt->dp_Port; /* handler's port */
-    fl->fl_Volume = MKBADDR(((struct Process *)FindTask(NULL))->pr_CurrentDir);
+    fl->fl_Task = &((struct Process *)FindTask(NULL))->pr_MsgPort;
+    fl->fl_Volume = MKBADDR(g_volume);
 
     return (SIPTR)MKBADDR(fl);
 }
@@ -178,7 +181,8 @@ static SIPTR HandleCopyDir(struct DosPacket *pkt)
     iel->access = SHARED_LOCK;
     fl->fl_Key = (IPTR)iel;
     fl->fl_Access = SHARED_LOCK;
-    fl->fl_Task = pkt->dp_Port;
+    fl->fl_Task = &((struct Process *)FindTask(NULL))->pr_MsgPort;
+    fl->fl_Volume = MKBADDR(g_volume);
 
     return (SIPTR)MKBADDR(fl);
 }
@@ -222,9 +226,95 @@ static SIPTR HandleParent(struct DosPacket *pkt)
     new_iel->access = SHARED_LOCK;
     new_fl->fl_Key = (IPTR)new_iel;
     new_fl->fl_Access = SHARED_LOCK;
-    new_fl->fl_Task = pkt->dp_Port;
+    new_fl->fl_Task = &((struct Process *)FindTask(NULL))->pr_MsgPort;
+    new_fl->fl_Volume = MKBADDR(g_volume);
 
     return (SIPTR)MKBADDR(new_fl);
+}
+
+/* ACTION_PARENT_FH: dp_Arg1 is fh_Arg1 (raw IEFileHandle ptr, NOT a lock BPTR) */
+static SIPTR HandleParentFH(struct DosPacket *pkt)
+{
+    struct IEFileHandle *iefh = (struct IEFileHandle *)pkt->dp_Arg1;
+    struct IELock *new_iel;
+    struct FileLock *new_fl;
+    ULONG parent_key = 0;
+    ULONG key;
+
+    if (iefh)
+        parent_key = iefh->key;
+
+    ie_dos_set_arg1(parent_key);
+    ie_dos_command(IE_DOS_CMD_PARENT);
+
+    key = ie_dos_result1();
+    if (key == 0) {
+        pkt->dp_Res2 = 0;
+        return 0;
+    }
+
+    new_iel = AllocVec(sizeof(struct IELock), MEMF_CLEAR);
+    new_fl = AllocVec(sizeof(struct FileLock), MEMF_CLEAR);
+    if (!new_iel || !new_fl) {
+        if (new_iel) FreeVec(new_iel);
+        if (new_fl) FreeVec(new_fl);
+        ie_dos_set_arg1(key);
+        ie_dos_command(IE_DOS_CMD_UNLOCK);
+        pkt->dp_Res2 = ERROR_NO_FREE_STORE;
+        return DOSFALSE;
+    }
+
+    new_iel->key = key;
+    new_iel->access = SHARED_LOCK;
+    new_fl->fl_Key = (IPTR)new_iel;
+    new_fl->fl_Access = SHARED_LOCK;
+    new_fl->fl_Task = &((struct Process *)FindTask(NULL))->pr_MsgPort;
+    new_fl->fl_Volume = MKBADDR(g_volume);
+
+    return (SIPTR)MKBADDR(new_fl);
+}
+
+/* ACTION_COPY_DIR_FH: dp_Arg1 is fh_Arg1 (raw IEFileHandle ptr, NOT a lock BPTR) */
+static SIPTR HandleCopyDirFH(struct DosPacket *pkt)
+{
+    struct IEFileHandle *iefh = (struct IEFileHandle *)pkt->dp_Arg1;
+    struct IELock *iel;
+    struct FileLock *fl;
+    ULONG key;
+    ULONG src_key = 0;
+
+    if (!iefh)
+        return 0;
+
+    src_key = iefh->key;
+    ie_dos_set_arg1(src_key);
+    ie_dos_command(IE_DOS_CMD_DUPLOCK);
+
+    key = ie_dos_result1();
+    if (key == 0) {
+        pkt->dp_Res2 = ie_dos_result2();
+        return DOSFALSE;
+    }
+
+    iel = AllocVec(sizeof(struct IELock), MEMF_CLEAR);
+    fl = AllocVec(sizeof(struct FileLock), MEMF_CLEAR);
+    if (!iel || !fl) {
+        if (iel) FreeVec(iel);
+        if (fl) FreeVec(fl);
+        ie_dos_set_arg1(key);
+        ie_dos_command(IE_DOS_CMD_UNLOCK);
+        pkt->dp_Res2 = ERROR_NO_FREE_STORE;
+        return DOSFALSE;
+    }
+
+    iel->key = key;
+    iel->access = SHARED_LOCK;
+    fl->fl_Key = (IPTR)iel;
+    fl->fl_Access = SHARED_LOCK;
+    fl->fl_Task = &((struct Process *)FindTask(NULL))->pr_MsgPort;
+    fl->fl_Volume = MKBADDR(g_volume);
+
+    return (SIPTR)MKBADDR(fl);
 }
 
 static SIPTR HandleSameLock(struct DosPacket *pkt)
@@ -240,7 +330,10 @@ static SIPTR HandleSameLock(struct DosPacket *pkt)
     ie_dos_set_arg2(key2);
     ie_dos_command(IE_DOS_CMD_SAMELOCK);
 
-    return ie_dos_result1();
+    /* Go side returns LOCK_SAME (0) / LOCK_SAME_VOLUME (1) / LOCK_DIFFERENT.
+     * DOS packet semantics: dp_Res1 non-zero = "same lock" (DOSTRUE).
+     * Translate: only LOCK_SAME (0) means identical → DOSTRUE; else DOSFALSE. */
+    return (ie_dos_result1() == LOCK_SAME) ? DOSTRUE : DOSFALSE;
 }
 
 /* ========================================================================
@@ -501,7 +594,8 @@ static SIPTR HandleCreateDir(struct DosPacket *pkt)
     iel->access = EXCLUSIVE_LOCK;
     new_fl->fl_Key = (IPTR)iel;
     new_fl->fl_Access = EXCLUSIVE_LOCK;
-    new_fl->fl_Task = pkt->dp_Port;
+    new_fl->fl_Task = &((struct Process *)FindTask(NULL))->pr_MsgPort;
+    new_fl->fl_Volume = MKBADDR(g_volume);
 
     return (SIPTR)MKBADDR(new_fl);
 }
@@ -592,7 +686,7 @@ static SIPTR HandleExamineFH(struct DosPacket *pkt)
  * Main handler entry point and packet loop
  * ======================================================================== */
 
-void IEHandlerMain(void)
+LONG IEHandlerMain(struct ExecBase *SysBase)
 {
     struct Process *proc = (struct Process *)FindTask(NULL);
     struct MsgPort *proc_port = &proc->pr_MsgPort;
@@ -609,7 +703,7 @@ void IEHandlerMain(void)
     startup_pkt = GetPacket(proc_port);
     if (!startup_pkt) {
         D(bug("[iehandler] No startup packet!\n"));
-        return;
+        return RETURN_FAIL;
     }
 
     /* Extract device node from startup packet */
@@ -624,8 +718,12 @@ void IEHandlerMain(void)
     if (!handler.dosBase) {
         D(bug("[iehandler] Cannot open dos.library!\n"));
         ReplyPacket(proc_port, startup_pkt, DOSFALSE, ERROR_INVALID_RESIDENT_LIBRARY);
-        return;
+        return RETURN_FAIL;
     }
+
+    /* Set the global DOSBase so that proto/dos.h inline stubs work.
+       The compiler generates library calls via the global, not our local. */
+    DOSBase = (struct DosLibrary *)handler.dosBase;
 
     /* Create and register volume entry */
     volume = MakeDosEntry("IE", DLT_VOLUME);
@@ -635,6 +733,7 @@ void IEHandlerMain(void)
         DateStamp(&volume->dol_misc.dol_volume.dol_VolumeDate);
         AddDosEntry(volume);
         handler.volume = volume;
+        g_volume = volume;
     }
 
     /* Set device node task to our port */
@@ -670,14 +769,22 @@ void IEHandlerMain(void)
                 break;
 
             case ACTION_COPY_DIR:
-            case ACTION_COPY_DIR_FH:
                 res1 = HandleCopyDir(pkt);
                 res2 = pkt->dp_Res2;
                 break;
 
+            case ACTION_COPY_DIR_FH:
+                res1 = HandleCopyDirFH(pkt);
+                res2 = pkt->dp_Res2;
+                break;
+
             case ACTION_PARENT:
-            case ACTION_PARENT_FH:
                 res1 = HandleParent(pkt);
+                res2 = pkt->dp_Res2;
+                break;
+
+            case ACTION_PARENT_FH:
+                res1 = HandleParentFH(pkt);
                 res2 = pkt->dp_Res2;
                 break;
 
@@ -815,4 +922,6 @@ void IEHandlerMain(void)
         CloseLibrary(handler.dosBase);
 
     D(bug("[iehandler] Shutdown complete\n"));
+
+    return RETURN_OK;
 }

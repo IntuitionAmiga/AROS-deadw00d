@@ -2,7 +2,8 @@
     Copyright (C) 2026, The AROS Development Team. All rights reserved.
 
     Desc: Intuition Engine Graphics HIDD class.
-          Single mode (640x480 RGBA32), hardware blitter, no sprite.
+          Multi-resolution (640x480, 800x600, 1024x768, 1280x960)
+          with CLUT8 and RGBA32 pixel formats.  Hardware blitter, no sprite.
 */
 
 #define __OOP_NOATTRBASES__
@@ -48,14 +49,20 @@
 OOP_Object *METHOD(IEGfx, Root, New)
 {
     /*
-     * IE supports one display mode: 640x480 @ 60Hz with standard VGA timing.
-     * The pixel clock is notional (IE renders at host framerate) but we
-     * provide correct VGA timings for AROS mode enumeration.
+     * IE supports four display modes with standard VESA timings.
+     * The pixel clocks are notional (IE renders at host framerate) but
+     * correct timings are provided for AROS mode enumeration / ScreenMode prefs.
      */
-    MAKE_SYNC(640x480, 25175, 640, 656, 752, 800, 480, 490, 492, 525, 0, "IE:640x480");
+    MAKE_SYNC(640x480,   25175,  640,  656,  752,  800,  480, 490, 492, 525, 0, "IE:640x480");
+    MAKE_SYNC(800x600,   40000,  800,  840,  968, 1056,  600, 601, 605, 628, 0, "IE:800x600");
+    MAKE_SYNC(1024x768,  65000, 1024, 1048, 1184, 1344,  768, 771, 777, 806, 0, "IE:1024x768");
+    MAKE_SYNC(1280x960, 108000, 1280, 1376, 1488, 1800,  960, 961, 964,1000, 0, "IE:1280x960");
 
     struct TagItem syncs[] = {
-        { aHidd_Gfx_SyncTags,       (IPTR)sync_640x480 },
+        { aHidd_Gfx_SyncTags,       (IPTR)sync_640x480  },
+        { aHidd_Gfx_SyncTags,       (IPTR)sync_800x600  },
+        { aHidd_Gfx_SyncTags,       (IPTR)sync_1024x768 },
+        { aHidd_Gfx_SyncTags,       (IPTR)sync_1280x960 },
         { TAG_DONE, 0UL }
     };
 
@@ -216,17 +223,17 @@ OOP_Object *METHOD(IEGfx, Hidd_Gfx, CreateObject)
         }
         else
         {
-            /* Non-displayable friends of our bitmaps are our bitmaps too */
-            OOP_Object *friend = (OOP_Object *)GetTagData(aHidd_BitMap_Friend, 0, msg->attrList);
+            /*
+             * Always use the IE bitmap class for offscreen bitmaps.
+             * The IE has no planar display hardware — all bitmaps must be
+             * chunky (linear). If we let the base class choose, it may
+             * fall back to PBM (planar bitmap) whose PutPixel crashes
+             * because it expects allocated bitplanes that don't exist.
+             */
+            D(bug("[IEGfx] Offscreen bitmap — using IE bitmap class.\n"));
 
-            D(bug("[IEGfx] Not displayable. Friend=%p.\n", friend));
-
-            if (friend && (OOP_OCLASS(friend) == XSD(cl)->bmclass))
-            {
-                D(bug("[IEGfx] Friend is IE bitmap, using our class\n"));
-                tags[0].ti_Tag  = aHidd_BitMap_ClassPtr;
-                tags[0].ti_Data = (IPTR)XSD(cl)->bmclass;
-            }
+            tags[0].ti_Tag  = aHidd_BitMap_ClassPtr;
+            tags[0].ti_Data = (IPTR)XSD(cl)->bmclass;
         }
 
         p.mID = msg->mID;
@@ -323,8 +330,17 @@ OOP_Object *METHOD(IEGfx, Hidd_Gfx, Show)
             IE_SetColorMode(IE_COLORMODE_RGBA32);
         }
 
-        /* Set 640x480 mode and enable the VideoChip */
-        IE_VideoSetMode(IE_MODE_640x480);
+        /* Map bitmap dimensions to the correct VideoChip mode */
+        {
+            UWORD ie_mode = IE_MODE_640x480;
+            if (bmdata->width >= 1280 && bmdata->height >= 960)
+                ie_mode = IE_MODE_1280x960;
+            else if (bmdata->width >= 1024 && bmdata->height >= 768)
+                ie_mode = IE_MODE_1024x768;
+            else if (bmdata->width >= 800 && bmdata->height >= 600)
+                ie_mode = IE_MODE_800x600;
+            IE_VideoSetMode(ie_mode);
+        }
         IE_VideoEnable(TRUE);
     }
     else

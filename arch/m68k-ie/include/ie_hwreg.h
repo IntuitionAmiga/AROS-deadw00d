@@ -82,6 +82,9 @@
 #define IE_SCAN_STATUS      0xF0744     /* Bit 0=scancode available */
 #define IE_SCAN_MODIFIERS   0xF0748     /* Bit 0=shift, 1=ctrl, 2=alt, 3=capslock */
 
+/* Real-Time Clock */
+#define IE_RTC_EPOCH        0xF0750     /* Read: host UTC seconds since Unix epoch */
+
 /* ========================================================================
  * Audio - Flex Channels (0xF0A80 - 0xF0B3F)
  * ======================================================================== */
@@ -206,22 +209,26 @@
 
 #define IE_MAIN_RAM_BASE    0x000000    /* Start of main RAM */
 #define IE_MAIN_RAM_END     0x09EFFF    /* End of main RAM (636KB) */
-#define IE_VRAM_BASE        0x200000    /* Video RAM base (4MB, above 1MB fast memory) */
-#define IE_VRAM_SIZE        0x400000    /* Video RAM size */
+#define IE_VRAM_BASE        0x1E00000   /* Video RAM base (top of 32MB bus) */
+#define IE_VRAM_SIZE        0x200000    /* Video RAM size (2MB) */
 #define IE_ROM_BASE         0x600000    /* AROS ROM load address */
 #define IE_IO_BASE          0xF0000     /* I/O region start */
 #define IE_IO_END           0xFFFFF     /* I/O region end */
 
-/* Memory regions for ExecBase initialization.
- * Skip I/O holes at 0xA0000-0xBFFFF (VGA) and 0xF0000-0xFFFFF (MMIO).
- * Bank 1: 0x001000 - 0x09FFFF  (636KB, first 4KB reserved for vectors)
- * Bank 2: 0x100000 - 0x1FFFFF  (1MB fast memory for Exec)
- * VRAM:   0x200000 - 0x5FFFFF  (4MB, managed by IEGfx HIDD bump allocator)
+/* Memory regions for ExecBase initialization (32MB bus).
+ * Chip A: 0x002800 - 0x09FFFF (630KB, below VGA hole)
+ * Chip B: 0x100000 - 0x5FFFFF (5MB)
+ * ROM:    0x600000 - 0x7FFFFF (2MB, AROS ROM image)
+ * Fast:   0x800000 - 0x1DFFFFF (22MB)
+ * VRAM:   0x1E00000 - 0x1FFFFFF (2MB, IEGfx HIDD bump allocator)
+ * Total:  ~5.6MB chip + 22MB fast = ~27.6MB
  */
-#define IE_MEM_BANK1_START  0x001000
-#define IE_MEM_BANK1_SIZE   0x09F000    /* 636KB */
+#define IE_MEM_BANK1_START  0x002800
+#define IE_MEM_BANK1_SIZE   0x09D800    /* 630KB */
 #define IE_MEM_BANK2_START  0x100000
-#define IE_MEM_BANK2_SIZE   0x100000    /* 1MB */
+#define IE_MEM_BANK2_SIZE   0x500000    /* 5MB */
+#define IE_MEM_BANK3_START  0x800000
+#define IE_MEM_BANK3_SIZE   0x1600000   /* 22MB */
 
 /* ========================================================================
  * Inline register access helpers

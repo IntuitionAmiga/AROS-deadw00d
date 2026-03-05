@@ -230,7 +230,7 @@ _Init( struct ExecBase* sysbase )
 
 #ifdef __AROS__
   if (!set_call_funcs(SETNAME(INIT), 1, 1))
-      return NULL;
+      return FALSE;
 #endif
 
   EMU10kxBase = OpenLibrary( "DEVS:AHI/emu10kx.audio", VERSION );

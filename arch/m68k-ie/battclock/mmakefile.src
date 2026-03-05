@@ -1,0 +1,15 @@
+include $(SRCDIR)/config/aros.cfg
+
+USER_INCLUDES := -I$(SRCDIR)/arch/$(CPU)-$(ARCH)/include
+
+#MM kernel-battclock-ie-m68k : includes
+#MM- kernel-battclock-ie-m68k-kobj : includes
+
+FILES := readbattclock
+
+%build_archspecific \
+    mainmmake=kernel-battclock maindir=rom/battclock \
+    asmfiles= files=$(FILES) \
+    arch=ie-m68k
+
+%common

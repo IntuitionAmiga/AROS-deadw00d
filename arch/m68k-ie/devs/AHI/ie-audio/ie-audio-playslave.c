@@ -14,6 +14,7 @@
 
 #include <aros/asmcall.h>
 #include <proto/exec.h>
+#include <proto/utility.h>
 
 #define dd ((struct IEAudioData*) AudioCtrl->ahiac_DriverData)
 
