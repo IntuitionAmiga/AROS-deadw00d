@@ -70,6 +70,7 @@
 #endif
 #include <aros/debug.h>
 
+
 struct OpenScreenActionMsg
 {
     struct IntuiActionMsg msg;
@@ -1098,6 +1099,7 @@ static const char THIS_FILE[] = __FILE__;
     rp_inited = TRUE;
     success = FALSE;
 
+
     if (ok && (displayinfo = FindDisplayInfo(modeid)) != NULL &&
         GetDisplayInfoData(displayinfo, (APTR)&dimensions, sizeof(dimensions), DTAG_DIMS, modeid)
 #ifdef __AROS__ /* AROS: We don't need MonitorSpec, however we get DisplayInfo early to get the compositors bm hooks. */
@@ -1366,6 +1368,7 @@ static const char THIS_FILE[] = __FILE__;
     DEBUG_OPENSCREEN(dprintf("OpenScreen: RasInfo 0x%lx\n",
                  screen->Screen.ViewPort.RasInfo));
 
+
     if (!success ||
         (screen->Screen.RastPort.BitMap == NULL) ||
         (screen->Screen.ViewPort.RasInfo == NULL))
@@ -1595,6 +1598,7 @@ static const char THIS_FILE[] = __FILE__;
             }
         }
     }
+
 
     if (ok)
     {
@@ -1861,6 +1865,7 @@ static const char THIS_FILE[] = __FILE__;
         if (!screen->DInfo.dri_Font) ok = FALSE;
 
     } /* if (ok) */
+
 
     if (ok)
     {

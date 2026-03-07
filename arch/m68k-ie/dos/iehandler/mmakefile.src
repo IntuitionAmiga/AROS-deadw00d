@@ -2,6 +2,8 @@
 include $(SRCDIR)/config/aros.cfg
 
 USER_INCLUDES := -I$(SRCDIR)/arch/$(CPU)-$(ARCH)/include
+USER_CPPFLAGS := -D__NOLIBBASE__
+USER_CFLAGS := -fno-builtin
 
 %build_module mmake=kernel-ie-m68k-handler \
     modname=iehandler modtype=handler \

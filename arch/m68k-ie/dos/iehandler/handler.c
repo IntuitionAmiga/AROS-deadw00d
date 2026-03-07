@@ -17,12 +17,34 @@
 #include <dos/dosextens.h>
 #include <dos/filehandler.h>
 
+/* Handler manages its own library bases — __NOLIBBASE__ prevents autoinit.
+   Define the base variables before proto headers so the inline stubs work. */
+struct ExecBase *SysBase;
+struct DosLibrary *DOSBase;
+
+#define SysBase SysBase
+#define DOSBase DOSBase
+
 #include <proto/exec.h>
 #include <proto/dos.h>
 
-#include <string.h>
-
 #include "handler.h"
+
+/* Inline string helpers — avoids linking stdc (which drags in ADD2LIBS/autoinit) */
+static inline ULONG ie_strlen(const char *s)
+{
+    ULONG n = 0;
+    while (s[n]) n++;
+    return n;
+}
+
+static inline void ie_strncpy(char *dst, const char *src, ULONG max)
+{
+    ULONG i;
+    for (i = 0; i < max && src[i]; i++)
+        dst[i] = src[i];
+    dst[i < max ? i : max] = '\0';
+}
 
 /* File-scope volume pointer — set during handler init, used by lock creators */
 static struct DosList *g_volume;
@@ -67,7 +89,7 @@ static UBYTE name_buf[256];
 static ULONG PrepareNameArg(const char *name)
 {
     ULONG i;
-    ULONG len = strlen(name);
+    ULONG len = ie_strlen(name);
     if (len > 254) len = 254;
     for (i = 0; i < len; i++)
         name_buf[i] = name[i];
@@ -615,11 +637,11 @@ static SIPTR HandleRenameObject(struct DosPacket *pkt)
 
     /* Copy BSTR names — BStr uses static buffer, so copy before second call */
     tmp = BStr(pkt->dp_Arg2);
-    strncpy(src_name, tmp, 255);
+    ie_strncpy(src_name, tmp, 255);
     src_name[255] = '\0';
 
     tmp = BStr(pkt->dp_Arg4);
-    strncpy(dst_name, tmp, 255);
+    ie_strncpy(dst_name, tmp, 255);
     dst_name[255] = '\0';
 
     ie_dos_set_arg1(src_key);
@@ -686,8 +708,9 @@ static SIPTR HandleExamineFH(struct DosPacket *pkt)
  * Main handler entry point and packet loop
  * ======================================================================== */
 
-LONG IEHandlerMain(struct ExecBase *SysBase)
+LONG IEHandlerMain(struct ExecBase *sysBase)
 {
+    SysBase = sysBase;
     struct Process *proc = (struct Process *)FindTask(NULL);
     struct MsgPort *proc_port = &proc->pr_MsgPort;
     struct DosPacket *startup_pkt;
@@ -710,7 +733,12 @@ LONG IEHandlerMain(struct ExecBase *SysBase)
     dev_node = (struct DeviceNode *)BADDR(startup_pkt->dp_Arg3);
 
     /* Initialise handler context */
-    memset(&handler, 0, sizeof(handler));
+    /* Zero-init handler context (avoid string.h/stdc dependency) */
+    {
+        UBYTE *p = (UBYTE *)&handler;
+        ULONG i;
+        for (i = 0; i < sizeof(handler); i++) p[i] = 0;
+    }
     handler.proc_port = proc_port;
     handler.running = TRUE;
 
@@ -721,8 +749,6 @@ LONG IEHandlerMain(struct ExecBase *SysBase)
         return RETURN_FAIL;
     }
 
-    /* Set the global DOSBase so that proto/dos.h inline stubs work.
-       The compiler generates library calls via the global, not our local. */
     DOSBase = (struct DosLibrary *)handler.dosBase;
 
     /* Create and register volume entry */

@@ -3,7 +3,8 @@ include $(SRCDIR)/config/aros.cfg
 
 #MM- workbench-classes-complete : \
 #MM         workbench-gadgets-complete \
-#MM	    workbench-datatypes-complete
+#MM	    workbench-datatypes-complete \
+#MM	    workbench-classes-zune
 
 # The workbench-classes target points back to config/$(ARCH)/mmakefile:
 #MM- workbench-classes : workbench-classes-$(ARCH)-$(CPU)

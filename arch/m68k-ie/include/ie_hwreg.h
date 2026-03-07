@@ -45,7 +45,30 @@
 #define IE_BLT_DST_STRIDE   0xF0038     /* Destination stride in bytes */
 #define IE_BLT_COLOR        0xF003C     /* Fill/line color (RGBA32) */
 #define IE_BLT_MASK         0xF0040     /* Mask address for masked copy */
-#define IE_BLT_STATUS       0xF0044     /* Status: bit 0 = busy */
+#define IE_BLT_STATUS       0xF0044     /* Status: bit 0 = error */
+
+/* Mode7 affine texture mapping registers (16.16 fixed-point) */
+#define IE_BLT_MODE7_U0        0xF0058     /* Starting U coordinate */
+#define IE_BLT_MODE7_V0        0xF005C     /* Starting V coordinate */
+#define IE_BLT_MODE7_DU_COL    0xF0060     /* U delta per column */
+#define IE_BLT_MODE7_DV_COL    0xF0064     /* V delta per column */
+#define IE_BLT_MODE7_DU_ROW    0xF0068     /* U delta per row */
+#define IE_BLT_MODE7_DV_ROW    0xF006C     /* V delta per row */
+#define IE_BLT_MODE7_TEX_W     0xF0070     /* Texture width mask (255 = 256-wide) */
+#define IE_BLT_MODE7_TEX_H     0xF0074     /* Texture height mask */
+
+/* Blitter operation codes */
+#define IE_BLT_OP_COPY         0           /* Rectangular copy */
+#define IE_BLT_OP_FILL         1           /* Rectangular fill */
+#define IE_BLT_OP_LINE         2           /* Line draw */
+#define IE_BLT_OP_MASKED       3           /* Masked copy */
+#define IE_BLT_OP_ALPHA        4           /* Alpha blended copy */
+#define IE_BLT_OP_MODE7        5           /* Affine texture mapping */
+
+/* Blitter control bits (BLT_CTRL register) */
+#define IE_BLT_CTRL_START      (1 << 0)    /* Write 1 to start blit */
+#define IE_BLT_CTRL_BUSY       (1 << 1)    /* Read: 1 = blit in progress */
+#define IE_BLT_CTRL_IRQ        (1 << 2)    /* IRQ enable */
 
 /* Copper (0xF000C - 0xF0018) */
 #define IE_COPPER_CTRL      0xF000C     /* Control: bit 0 = enable */

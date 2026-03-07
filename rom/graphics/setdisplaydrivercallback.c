@@ -74,8 +74,35 @@
 {
     AROS_LIBFUNC_INIT
 
+    APTR (*notify)(APTR, BOOL, APTR) = (APTR (*)(APTR, BOOL, APTR))callback;
+
     CDD(GfxBase)->DriverNotify = callback;
     CDD(GfxBase)->notify_data  = userdata;
+
+    /*
+     * Retroactively notify for any drivers that were registered before
+     * the callback was set. This handles the case where a display HIDD
+     * (e.g. IEGfx) calls AddDisplayDriverA() during ROM init, before
+     * Intuition has called SetDisplayDriverCallback(). Without this,
+     * the MonitorClass objects are never created and FindMonitorNode()
+     * fails for all mode IDs.
+     */
+    if (notify)
+    {
+        struct monitor_driverdata *mdd;
+
+        ObtainSemaphore(&CDD(GfxBase)->displaydb_sem);
+
+        for (mdd = CDD(GfxBase)->monitors; mdd; mdd = mdd->next)
+        {
+            if (!mdd->userdata)
+            {
+                mdd->userdata = notify(mdd, TRUE, userdata);
+            }
+        }
+
+        ReleaseSemaphore(&CDD(GfxBase)->displaydb_sem);
+    }
 
     AROS_LIBFUNC_EXIT
 }

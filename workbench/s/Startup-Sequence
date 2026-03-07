@@ -24,7 +24,7 @@ Assign "HELP:"    "LOCALE:Help" DEFER
 Assign "THEMES:"  "SYS:Prefs/Presets/Themes" >NIL:
 Assign "IMAGES:"  "SYS:System/Images" DEFER
 Assign "PRINTERS:" "DEVS:Printers"
-Assign "WANDERER:" "SYS:System/Wanderer" DEFER
+; Assign "WANDERER:" "SYS:System/Wanderer" DEFER
 
 If EXISTS "C:SetPatch"
     C:SetPatch QUIET
@@ -60,14 +60,6 @@ EndIf
 
 Copy >NIL: "ENVARC:" "ENV:" ALL NOPRO NOREQ PAT "~(def_#?.info)"
 
-If EXISTS "ENV:SYS/theme.var"
-    Assign "THEME:" "${SYS/theme.var}"
-Else
-    Assign "THEME:" "THEMES:AROSDefault"
-EndIf
-If EXISTS "THEME:Images"
-    Assign "IMAGES:"  "THEME:Images" PREPEND
-EndIf
 
 Touch >NIL: "FONTS:__TEST__"
 If WARN
@@ -97,12 +89,6 @@ If EXISTS "C:RexxMast"
     Run <NIL: >NIL: QUIET C:RexxMast
 EndIf
 
-If EXISTS "C:Decoration"
-    If EXISTS "ENV:SYS/theme.var"
-        C:Decoration <NIL: >NIL:
-    EndIf
-EndIf
-
 Assign EXISTS "Extras:" >NIL:
 If WARN
     If EXISTS "$EXTRASPATH"
@@ -130,8 +116,8 @@ If EXISTS "S:User-Startup"
     Execute "S:User-Startup"
 EndIf
 
-If EXISTS "WANDERER:Wanderer"
-    WANDERER:Wanderer
+If EXISTS "SYS:System/Workbook"
+    SYS:System/Workbook
 
     If NOT ERROR
         EndCLI
