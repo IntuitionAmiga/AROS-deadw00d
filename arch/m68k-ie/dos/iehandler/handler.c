@@ -665,7 +665,8 @@ static SIPTR HandleSetProtect(struct DosPacket *pkt)
 
 static SIPTR HandleInfo(struct DosPacket *pkt)
 {
-    struct InfoData *id = (struct InfoData *)BADDR(pkt->dp_Arg1);
+    /* ACTION_INFO: dp_Arg1 = lock BPTR, dp_Arg2 = InfoData BPTR */
+    struct InfoData *id = (struct InfoData *)BADDR(pkt->dp_Arg2);
 
     ie_dos_set_arg1((ULONG)id);
     ie_dos_command(IE_DOS_CMD_DISKINFO);
