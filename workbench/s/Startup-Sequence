@@ -60,6 +60,10 @@ EndIf
 
 Copy >NIL: "ENVARC:" "ENV:" ALL NOPRO NOREQ PAT "~(def_#?.info)"
 
+Assign "THEME:" "THEMES:AROSDefault" >NIL:
+If EXISTS "THEME:Images"
+    Assign "IMAGES:" "THEME:Images" PREPEND
+EndIf
 
 Touch >NIL: "FONTS:__TEST__"
 If WARN
