@@ -3,7 +3,7 @@
 
 include $(SRCDIR)/config/aros.cfg
 
-ICONS     := MultiView Clock More Installer
+ICONS     := MultiView Clock More Installer IEWarpMon
 
 #MM- iconset-Mason-wbench-icons-aros : iconset-Mason-wbench-icons-aros-utility
 
