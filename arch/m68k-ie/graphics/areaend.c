@@ -13,15 +13,6 @@
 #include <libraries/iewarp.h>
 #include <ie_hwreg.h>
 
-static inline void ie_write32(unsigned long reg, unsigned long val)
-{
-    *((volatile unsigned long *)reg) = val;
-}
-static inline unsigned long ie_read32(unsigned long reg)
-{
-    return *((volatile unsigned long *)reg);
-}
-
 #define IE_AREA_THRESHOLD 4096  /* minimum bounding-box area for IE64 dispatch */
 
 AROS_LH1(LONG, AreaEnd,

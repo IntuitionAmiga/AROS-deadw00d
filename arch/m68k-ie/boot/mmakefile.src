@@ -60,6 +60,7 @@ include $(SRCDIR)/config/aros.cfg
 #MM     workbench-libs-cgfx-kobj \
 #MM     workbench-libs-mathffp-kobj \
 #MM     workbench-libs-mathieeesingbas-kobj \
+#MM     kernel-iewarp-kobj \
 #MM     linklibs-loadseg \
 #MM     compiler-stdc \
 #MM     compiler-posixc

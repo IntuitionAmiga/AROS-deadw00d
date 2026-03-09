@@ -10,15 +10,6 @@
 #include <libraries/iewarp.h>
 #include <ie_hwreg.h>
 
-static inline void ie_write32(unsigned long reg, unsigned long val)
-{
-    *((volatile unsigned long *)reg) = val;
-}
-static inline unsigned long ie_read32(unsigned long reg)
-{
-    return *((volatile unsigned long *)reg);
-}
-
 /*
  * IE64 accelerated audio block decoding.
  * Dispatches WARP_OP_AUDIO_DECODE with bulk compressed data.

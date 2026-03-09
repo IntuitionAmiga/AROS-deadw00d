@@ -57,7 +57,8 @@ AROS_UFH3(void, SlaveEntry,
  * dispatches WARP_OP_AUDIO_RESAMPLE for each channel, then re-interleaves.
  * Returns the number of output samples, or 0 on failure (caller should fallback).
  */
-static ULONG IE_ResampleStereo(WORD *src, ULONG srcSamples,
+static ULONG IE_ResampleStereo(struct ExecBase *SysBase,
+                                WORD *src, ULONG srcSamples,
                                 WORD *dst, ULONG dstSamples,
                                 ULONG srcRate, ULONG dstRate)
 {
@@ -211,7 +212,7 @@ Slave(struct ExecBase *SysBase)
                         resampleBuf)
                     {
                         ULONG resampled = IE_ResampleStereo(
-                            (WORD *)dd->mixbuffer,
+                            SysBase, (WORD *)dd->mixbuffer,
                             AudioCtrl->ahiac_BuffSamples,
                             resampleBuf, resampleBufSamples,
                             mixRate, IE_DAC_RATE);

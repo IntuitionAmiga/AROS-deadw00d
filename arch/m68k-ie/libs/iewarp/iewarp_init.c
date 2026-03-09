@@ -5,6 +5,7 @@
 */
 
 #include <aros/symbolsets.h>
+#include <hardware/intbits.h>
 #include <proto/exec.h>
 
 #include "iewarp_intern.h"

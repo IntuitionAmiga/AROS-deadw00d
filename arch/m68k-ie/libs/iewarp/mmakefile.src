@@ -4,9 +4,8 @@ FILES := iewarp_init iewarp_dispatch iewarp_ops
 
 USER_INCLUDES := -I$(SRCDIR)/arch/m68k-ie/include
 
-%build_archspecific \
-  mainmmake=kernel-iewarp maindir=arch/m68k-ie/libs/iewarp \
-  arch=ie-m68k files="$(FILES)" \
-  moduletype=library
+%build_module mmake=kernel-iewarp \
+  modname=iewarp modtype=library \
+  files="$(FILES)"
 
 %common
