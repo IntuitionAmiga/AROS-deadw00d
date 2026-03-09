@@ -20,6 +20,7 @@ AROS_LH3(ULONG, IEWarpMemCpy,
     if (!IEWarpBase->workerRunning || len < IEWarpBase->threshold)
     {
         CopyMem(src, dst, len);
+        ie_warp_track_fallback(IEWarpBase, WARP_OP_MEMCPY, len);
         return 0;
     }
 
@@ -40,6 +41,7 @@ AROS_LH3(ULONG, IEWarpMemCpyQuick,
     if (!IEWarpBase->workerRunning || len < IEWarpBase->threshold)
     {
         CopyMemQuick(src, dst, len);
+        ie_warp_track_fallback(IEWarpBase, WARP_OP_MEMCPY_QUICK, len);
         return 0;
     }
 
@@ -65,6 +67,7 @@ AROS_LH3(ULONG, IEWarpMemSet,
         ULONG i;
         for (i = 0; i < len; i++)
             p[i] = v;
+        ie_warp_track_fallback(IEWarpBase, WARP_OP_MEMSET, len);
         return 0;
     }
 
@@ -100,6 +103,7 @@ AROS_LH3(ULONG, IEWarpMemMove,
             for (i = len; i > 0; i--)
                 d[i - 1] = s[i - 1];
         }
+        ie_warp_track_fallback(IEWarpBase, WARP_OP_MEMMOVE, len);
         return 0;
     }
 
@@ -129,7 +133,10 @@ AROS_LH7(ULONG, IEWarpBlitCopy,
      * Other minterms (AND, OR, XOR, etc.) are not implemented
      * in the worker — return 0 so the caller uses its own path. */
     if (minterm != 0xC0)
+    {
+        ie_warp_track_fallback(IEWarpBase, WARP_OP_BLIT_COPY, (ULONG)height * (ULONG)srcStride);
         return 0;
+    }
 
     if (!IEWarpBase->workerRunning || totalBytes < IEWarpBase->threshold)
     {
@@ -143,6 +150,7 @@ AROS_LH7(ULONG, IEWarpBlitCopy,
             s += srcStride;
             d += dstStride;
         }
+        ie_warp_track_fallback(IEWarpBase, WARP_OP_BLIT_COPY, totalBytes);
         return 0;
     }
 
@@ -157,10 +165,14 @@ AROS_LH7(ULONG, IEWarpBlitCopy,
     ie_write32(IE_COPROC_CMD, IE_COPROC_CMD_ENQUEUE);
 
     if (ie_read32(IE_COPROC_CMD_STATUS) != 0)
+    {
+        ie_warp_track_error(IEWarpBase, 0);
         return 0;
+    }
 
     {
         ULONG ticket = ie_read32(IE_COPROC_TICKET);
+        ie_warp_track_accel(IEWarpBase, WARP_OP_BLIT_COPY, totalBytes);
         if (IEWarpBase->batchMode)
             IEWarpBase->lastTicket = ticket;
         return ticket;
@@ -184,7 +196,10 @@ AROS_LH7(ULONG, IEWarpBlitMask,
     ULONG totalBytes = (ULONG)height * (ULONG)srcStride;
 
     if (!IEWarpBase->workerRunning || totalBytes < IEWarpBase->threshold)
+    {
+        ie_warp_track_fallback(IEWarpBase, WARP_OP_BLIT_MASK, totalBytes);
         return 0; /* No simple M68K fallback for masked blit */
+    }
 
     /* Manual MMIO: mask pointer goes to TIMEOUT register (extra param slot) */
     ie_write32(IE_COPROC_CPU_TYPE, IE_EXEC_TYPE_IE64);
@@ -199,10 +214,14 @@ AROS_LH7(ULONG, IEWarpBlitMask,
     ie_write32(IE_COPROC_CMD, IE_COPROC_CMD_ENQUEUE);
 
     if (ie_read32(IE_COPROC_CMD_STATUS) != 0)
+    {
+        ie_warp_track_error(IEWarpBase, 0);
         return 0;
+    }
 
     {
         ULONG ticket = ie_read32(IE_COPROC_TICKET);
+        ie_warp_track_accel(IEWarpBase, WARP_OP_BLIT_MASK, totalBytes);
         if (IEWarpBase->batchMode)
             IEWarpBase->lastTicket = ticket;
         return ticket;
@@ -227,7 +246,10 @@ AROS_LH8(ULONG, IEWarpBlitScale,
     ULONG totalBytes = (ULONG)srcH * (ULONG)srcStride;
 
     if (!IEWarpBase->workerRunning || totalBytes < IEWarpBase->threshold)
+    {
+        ie_warp_track_fallback(IEWarpBase, WARP_OP_BLIT_SCALE, totalBytes);
         return 0;
+    }
 
     /* Manual MMIO: strides go to TIMEOUT register (extra param slot) */
     ie_write32(IE_COPROC_CPU_TYPE, IE_EXEC_TYPE_IE64);
@@ -243,10 +265,14 @@ AROS_LH8(ULONG, IEWarpBlitScale,
     ie_write32(IE_COPROC_CMD, IE_COPROC_CMD_ENQUEUE);
 
     if (ie_read32(IE_COPROC_CMD_STATUS) != 0)
+    {
+        ie_warp_track_error(IEWarpBase, 0);
         return 0;
+    }
 
     {
         ULONG ticket = ie_read32(IE_COPROC_TICKET);
+        ie_warp_track_accel(IEWarpBase, WARP_OP_BLIT_SCALE, totalBytes);
         if (IEWarpBase->batchMode)
             IEWarpBase->lastTicket = ticket;
         return ticket;
@@ -269,7 +295,10 @@ AROS_LH6(ULONG, IEWarpBlitConvert,
     ULONG totalBytes = (ULONG)width * (ULONG)height;
 
     if (!IEWarpBase->workerRunning || totalBytes < IEWarpBase->threshold)
+    {
+        ie_warp_track_fallback(IEWarpBase, WARP_OP_BLIT_CONVERT, totalBytes);
         return 0;
+    }
 
     return ie_warp_dispatch(IEWarpBase, WARP_OP_BLIT_CONVERT,
                             src, ((ULONG)width) | ((ULONG)height << 16),
@@ -292,7 +321,10 @@ AROS_LH6(ULONG, IEWarpBlitAlpha,
     ULONG totalBytes = (ULONG)height * (ULONG)srcStride;
 
     if (!IEWarpBase->workerRunning || totalBytes < IEWarpBase->threshold)
+    {
+        ie_warp_track_fallback(IEWarpBase, WARP_OP_BLIT_ALPHA, totalBytes);
         return 0;
+    }
 
     return ie_warp_dispatch(IEWarpBase, WARP_OP_BLIT_ALPHA,
                             src, ((ULONG)width) | ((ULONG)height << 16),
@@ -336,6 +368,7 @@ AROS_LH5(ULONG, IEWarpFillRect,
                 d[wholeWords * 4 + x] = colorBytes[x];
             d += stride;
         }
+        ie_warp_track_fallback(IEWarpBase, WARP_OP_FILL_RECT, totalBytes);
         return 0;
     }
 
@@ -361,7 +394,10 @@ AROS_LH6(ULONG, IEWarpPixelProcess,
     ULONG totalBytes = (ULONG)height * (ULONG)stride;
 
     if (!IEWarpBase->workerRunning || totalBytes < IEWarpBase->threshold)
+    {
+        ie_warp_track_fallback(IEWarpBase, WARP_OP_PIXEL_PROCESS, totalBytes);
         return 0;
+    }
 
     return ie_warp_dispatch(IEWarpBase, WARP_OP_PIXEL_PROCESS,
                             data,
@@ -385,7 +421,10 @@ AROS_LH5(ULONG, IEWarpAudioMix,
     AROS_LIBFUNC_INIT
 
     if (!IEWarpBase->workerRunning || numSamples < IEWarpBase->threshold / 4)
+    {
+        ie_warp_track_fallback(IEWarpBase, WARP_OP_AUDIO_MIX, numSamples * 4);
         return 0;
+    }
 
     /* Manual MMIO: volumes pointer goes to TIMEOUT register (extra param slot) */
     ie_write32(IE_COPROC_CPU_TYPE, IE_EXEC_TYPE_IE64);
@@ -399,10 +438,14 @@ AROS_LH5(ULONG, IEWarpAudioMix,
     ie_write32(IE_COPROC_CMD, IE_COPROC_CMD_ENQUEUE);
 
     if (ie_read32(IE_COPROC_CMD_STATUS) != 0)
+    {
+        ie_warp_track_error(IEWarpBase, 0);
         return 0;
+    }
 
     {
         ULONG ticket = ie_read32(IE_COPROC_TICKET);
+        ie_warp_track_accel(IEWarpBase, WARP_OP_AUDIO_MIX, numSamples * 4);
         if (IEWarpBase->batchMode)
             IEWarpBase->lastTicket = ticket;
         return ticket;
@@ -422,7 +465,10 @@ AROS_LH5(ULONG, IEWarpAudioResample,
     AROS_LIBFUNC_INIT
 
     if (!IEWarpBase->workerRunning || numSamples < IEWarpBase->threshold / 4)
+    {
+        ie_warp_track_fallback(IEWarpBase, WARP_OP_AUDIO_RESAMPLE, numSamples * 4);
         return 0;
+    }
 
     return ie_warp_dispatch(IEWarpBase, WARP_OP_AUDIO_RESAMPLE,
                             src, numSamples,
@@ -441,7 +487,10 @@ AROS_LH4(ULONG, IEWarpAudioDecode,
     AROS_LIBFUNC_INIT
 
     if (!IEWarpBase->workerRunning || srcLen < IEWarpBase->threshold)
+    {
+        ie_warp_track_fallback(IEWarpBase, WARP_OP_AUDIO_DECODE, srcLen);
         return 0;
+    }
 
     return ie_warp_dispatch(IEWarpBase, WARP_OP_AUDIO_DECODE,
                             src, srcLen, dst, codec);
@@ -460,7 +509,10 @@ AROS_LH3(ULONG, IEWarpFPBatch,
     AROS_LIBFUNC_INIT
 
     if (!IEWarpBase->workerRunning || count == 0)
+    {
+        ie_warp_track_fallback(IEWarpBase, WARP_OP_FP_BATCH, count * 12);
         return 0;
+    }
 
     /* FP_BATCH: reqPtr = descriptors (12 bytes each: opcode:u32, a:f32, b:f32)
      * respPtr = results (packed f32 array, 4 bytes per result)
@@ -480,7 +532,10 @@ AROS_LH3(ULONG, IEWarpMatrixMul,
     AROS_LIBFUNC_INIT
 
     if (!IEWarpBase->workerRunning)
+    {
+        ie_warp_track_fallback(IEWarpBase, WARP_OP_MATRIX_MUL, 192);
         return 0;
+    }
 
     /* MATRIX_MUL: Worker expects r12=matA, r14=matB, r29=dstC.
      * RESP_PTR → r14 = matB, TIMEOUT → r29 = matOut (destination). */
@@ -494,10 +549,14 @@ AROS_LH3(ULONG, IEWarpMatrixMul,
     ie_write32(IE_COPROC_CMD, IE_COPROC_CMD_ENQUEUE);
 
     if (ie_read32(IE_COPROC_CMD_STATUS) != 0)
+    {
+        ie_warp_track_error(IEWarpBase, 0);
         return 0;
+    }
 
     {
         ULONG ticket = ie_read32(IE_COPROC_TICKET);
+        ie_warp_track_accel(IEWarpBase, WARP_OP_MATRIX_MUL, 192);
         if (IEWarpBase->batchMode)
             IEWarpBase->lastTicket = ticket;
         return ticket;
@@ -535,6 +594,7 @@ AROS_LH4(ULONG, IEWarpCRC32,
         crc ^= 0xFFFFFFFF;
         if (result)
             *result = crc;
+        ie_warp_track_fallback(IEWarpBase, WARP_OP_CRC32, len);
         return 0;
     }
 
@@ -552,10 +612,14 @@ AROS_LH4(ULONG, IEWarpCRC32,
     ie_write32(IE_COPROC_CMD, IE_COPROC_CMD_ENQUEUE);
 
     if (ie_read32(IE_COPROC_CMD_STATUS) != 0)
+    {
+        ie_warp_track_error(IEWarpBase, 0);
         return 0;
+    }
 
     {
         ULONG ticket = ie_read32(IE_COPROC_TICKET);
+        ie_warp_track_accel(IEWarpBase, WARP_OP_CRC32, len);
         if (IEWarpBase->batchMode)
             IEWarpBase->lastTicket = ticket;
         return ticket;
@@ -581,7 +645,10 @@ AROS_LH7(ULONG, IEWarpGradientFill,
     ULONG totalBytes = (ULONG)height * (ULONG)stride;
 
     if (!IEWarpBase->workerRunning || totalBytes < IEWarpBase->threshold)
+    {
+        ie_warp_track_fallback(IEWarpBase, WARP_OP_GRADIENT_FILL, totalBytes);
         return 0;
+    }
 
     /* GRADIENT_FILL: startColor in reqPtr, endColor in reqLen (packed),
      * dst in respPtr, stride|(direction<<16) in respCap */
@@ -597,10 +664,152 @@ AROS_LH7(ULONG, IEWarpGradientFill,
     ie_write32(IE_COPROC_CMD, IE_COPROC_CMD_ENQUEUE);
 
     if (ie_read32(IE_COPROC_CMD_STATUS) != 0)
+    {
+        ie_warp_track_error(IEWarpBase, 0);
         return 0;
+    }
 
     {
         ULONG ticket = ie_read32(IE_COPROC_TICKET);
+        ie_warp_track_accel(IEWarpBase, WARP_OP_GRADIENT_FILL, totalBytes);
+        if (IEWarpBase->batchMode)
+            IEWarpBase->lastTicket = ticket;
+        return ticket;
+    }
+
+    AROS_LIBFUNC_EXIT
+}
+
+/* ── Scroll operation ─────────────────────────────────────────── */
+
+AROS_LH8(ULONG, IEWarpScroll,
+    AROS_LHA(APTR,  fb,     A0),
+    AROS_LHA(UWORD, width,  D0),
+    AROS_LHA(UWORD, height, D1),
+    AROS_LHA(UWORD, xMin,   D2),
+    AROS_LHA(UWORD, yMin,   D3),
+    AROS_LHA(WORD,  dx,     D4),
+    AROS_LHA(WORD,  dy,     D5),
+    AROS_LHA(UWORD, stride, D6),
+    struct IEWarpBase *, IEWarpBase, 39, IEWarp)
+{
+    AROS_LIBFUNC_INIT
+
+    ULONG totalBytes = (ULONG)height * (ULONG)stride;
+
+    if (!IEWarpBase->workerRunning || totalBytes < IEWarpBase->threshold)
+    {
+        ie_warp_track_fallback(IEWarpBase, WARP_OP_SCROLL, totalBytes);
+        return 0;
+    }
+
+    ie_write32(IE_COPROC_CPU_TYPE, IE_EXEC_TYPE_IE64);
+    ie_write32(IE_COPROC_OP, WARP_OP_SCROLL);
+    ie_write32(IE_COPROC_REQ_PTR, (ULONG)fb);
+    ie_write32(IE_COPROC_REQ_LEN,
+               (ULONG)width | ((ULONG)height << 16));
+    ie_write32(IE_COPROC_RESP_PTR,
+               (ULONG)xMin | ((ULONG)yMin << 16));
+    ie_write32(IE_COPROC_RESP_CAP,
+               (ULONG)(UWORD)dx | ((ULONG)(UWORD)dy << 16));
+    ie_write32(IE_COPROC_TIMEOUT, (ULONG)stride);
+    ie_write32(IE_COPROC_CMD, IE_COPROC_CMD_ENQUEUE);
+
+    if (ie_read32(IE_COPROC_CMD_STATUS) != 0)
+    {
+        ie_warp_track_error(IEWarpBase, 0);
+        return 0;
+    }
+
+    {
+        ULONG ticket = ie_read32(IE_COPROC_TICKET);
+        ie_warp_track_accel(IEWarpBase, WARP_OP_SCROLL, totalBytes);
+        if (IEWarpBase->batchMode)
+            IEWarpBase->lastTicket = ticket;
+        return ticket;
+    }
+
+    AROS_LIBFUNC_EXIT
+}
+
+/* ── Glyph rendering operation ────────────────────────────────── */
+
+AROS_LH5(ULONG, IEWarpGlyphRender,
+    AROS_LHA(APTR,  descs,     A0),
+    AROS_LHA(ULONG, count,     D0),
+    AROS_LHA(APTR,  dst,       A1),
+    AROS_LHA(ULONG, dstStride, D1),
+    AROS_LHA(APTR,  alphaData, A2),
+    struct IEWarpBase *, IEWarpBase, 40, IEWarp)
+{
+    AROS_LIBFUNC_INIT
+
+    if (!IEWarpBase->workerRunning || count == 0)
+    {
+        ie_warp_track_fallback(IEWarpBase, WARP_OP_GLYPH_RENDER, count * 16);
+        return 0;
+    }
+
+    ie_write32(IE_COPROC_CPU_TYPE, IE_EXEC_TYPE_IE64);
+    ie_write32(IE_COPROC_OP, WARP_OP_GLYPH_RENDER);
+    ie_write32(IE_COPROC_REQ_PTR, (ULONG)descs);
+    ie_write32(IE_COPROC_REQ_LEN, count);
+    ie_write32(IE_COPROC_RESP_PTR, (ULONG)dst);
+    ie_write32(IE_COPROC_RESP_CAP, dstStride);
+    ie_write32(IE_COPROC_TIMEOUT, (ULONG)alphaData);
+    ie_write32(IE_COPROC_CMD, IE_COPROC_CMD_ENQUEUE);
+
+    if (ie_read32(IE_COPROC_CMD_STATUS) != 0)
+    {
+        ie_warp_track_error(IEWarpBase, 0);
+        return 0;
+    }
+
+    {
+        ULONG ticket = ie_read32(IE_COPROC_TICKET);
+        ie_warp_track_accel(IEWarpBase, WARP_OP_GLYPH_RENDER, count * 16);
+        if (IEWarpBase->batchMode)
+            IEWarpBase->lastTicket = ticket;
+        return ticket;
+    }
+
+    AROS_LIBFUNC_EXIT
+}
+
+/* ── Area fill operation ──────────────────────────────────────── */
+
+AROS_LH4(ULONG, IEWarpAreaFill,
+    AROS_LHA(APTR,  vertices, A0),
+    AROS_LHA(ULONG, count,    D0),
+    AROS_LHA(APTR,  dstBase,  A1),
+    AROS_LHA(ULONG, stride,   D1),
+    struct IEWarpBase *, IEWarpBase, 41, IEWarp)
+{
+    AROS_LIBFUNC_INIT
+
+    if (!IEWarpBase->workerRunning || count < 3)
+    {
+        ie_warp_track_fallback(IEWarpBase, WARP_OP_AREA_FILL, 0);
+        return 0;
+    }
+
+    ie_write32(IE_COPROC_CPU_TYPE, IE_EXEC_TYPE_IE64);
+    ie_write32(IE_COPROC_OP, WARP_OP_AREA_FILL);
+    ie_write32(IE_COPROC_REQ_PTR, (ULONG)vertices);
+    ie_write32(IE_COPROC_REQ_LEN, count);
+    ie_write32(IE_COPROC_RESP_PTR, (ULONG)dstBase);
+    ie_write32(IE_COPROC_RESP_CAP, stride);
+    ie_write32(IE_COPROC_CMD, IE_COPROC_CMD_ENQUEUE);
+
+    if (ie_read32(IE_COPROC_CMD_STATUS) != 0)
+    {
+        ie_warp_track_error(IEWarpBase, 0);
+        return 0;
+    }
+
+    {
+        ULONG ticket = ie_read32(IE_COPROC_TICKET);
+        ie_warp_track_accel(IEWarpBase, WARP_OP_AREA_FILL, count * 4);
         if (IEWarpBase->batchMode)
             IEWarpBase->lastTicket = ticket;
         return ticket;

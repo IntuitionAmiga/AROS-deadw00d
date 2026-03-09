@@ -93,6 +93,83 @@ struct IEWarpStats
     ULONG overheadNs;       /* Dispatch overhead in nanoseconds */
     ULONG completedTicket;  /* Last completed ticket */
     ULONG threshold;        /* Current adaptive threshold in bytes */
+    /* Extended fields (IEWarpMon) */
+    ULONG ringDepth;        /* Current IE64 ring occupancy */
+    ULONG ringHighWater;    /* Peak ring occupancy since reset */
+    ULONG uptimeSecs;       /* Seconds since IE64 worker started */
+    ULONG irqEnabled;       /* 1 if completion IRQ enabled */
+    ULONG workerState;      /* Bitmask of running workers */
+    ULONG busyPct;          /* Worker busy % 0-100 */
 };
+
+/* Per-operation counter (returned by IEWarpGetOpStats) */
+struct IEWarpOpCounter
+{
+    ULONG accelCount;       /* Dispatched to IE64 */
+    ULONG accelBytes;
+    ULONG fallbackCount;    /* Fell back to M68K */
+    ULONG fallbackBytes;
+};
+
+/* Per-task stats (returned by IEWarpGetTaskStats) */
+struct IEWarpTaskEntry
+{
+    struct Task *task;      /* NULL = free slot */
+    char         name[32];
+    ULONG        ops;
+    ULONG        bytes;
+};
+
+/* Per-caller/consumer stats (returned by IEWarpGetCallerStats) */
+struct IEWarpCallerEntry
+{
+    ULONG callerID;         /* IEWARP_CALLER_* */
+    ULONG ops;
+    ULONG bytes;
+};
+
+/* Error counters (returned by IEWarpGetErrorStats) */
+struct IEWarpErrorStats
+{
+    ULONG queueFull;
+    ULONG workerDown;
+    ULONG staleTicket;
+    ULONG enqueueFail;
+};
+
+/* Batch counters (returned by IEWarpGetBatchStats) */
+struct IEWarpBatchStats
+{
+    ULONG batchCount;       /* Completed BatchBegin/BatchEnd brackets */
+    ULONG totalBatchedOps;  /* Total ops inside all batches */
+    ULONG maxBatchSize;     /* Largest single batch */
+    ULONG currentBatchOps;  /* Ops in current open batch (0 if not batching) */
+};
+
+/* Waiter slot info (returned by IEWarpGetWaiterInfo) */
+struct IEWarpWaiterInfo
+{
+    char   taskName[32];
+    ULONG  ticket;
+};
+
+/* Caller ID constants for IEWarpSetCaller() */
+#define IEWARP_CALLER_UNKNOWN    0
+#define IEWARP_CALLER_EXEC       1
+#define IEWARP_CALLER_GRAPHICS   2
+#define IEWARP_CALLER_IEGFX      3
+#define IEWARP_CALLER_CGFX       4
+#define IEWARP_CALLER_AHI        5
+#define IEWARP_CALLER_ICON       6
+#define IEWARP_CALLER_MATH       7
+#define IEWARP_CALLER_MUI        8
+#define IEWARP_CALLER_FREETYPE   9
+#define IEWARP_CALLER_DATATYPES  10
+#define IEWARP_CALLER_APP        11
+#define IEWARP_CALLER_MAX        12
+
+#define IEWARP_MAX_OPS      48
+#define IEWARP_MAX_TASKS    32
+#define IEWARP_MAX_CALLERS  16
 
 #endif /* LIBRARIES_IEWARP_H */

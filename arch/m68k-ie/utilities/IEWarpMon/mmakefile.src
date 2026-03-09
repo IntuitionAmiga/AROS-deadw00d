@@ -1,0 +1,14 @@
+include $(SRCDIR)/config/aros.cfg
+
+FILES := main timer stats
+EXEDIR := $(AROSDIR)/Utilities
+
+USER_INCLUDES := -I$(SRCDIR)/arch/m68k-ie/include
+
+#MM arch-ie-m68k-utilities-iewarpmon : includes linklibs kernel-iewarp
+
+%build_prog mmake=arch-ie-m68k-utilities-iewarpmon \
+    files=$(FILES) targetdir=$(EXEDIR) \
+    progname=IEWarpMon uselibs="mui"
+
+%common

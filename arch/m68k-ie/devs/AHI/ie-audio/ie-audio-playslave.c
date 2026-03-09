@@ -20,6 +20,8 @@
 
 #include <ie_hwreg.h>
 #include <libraries/iewarp.h>
+static struct Library *IEWarpBase = NULL;
+#include <iewarp_consumer.h>
 
 #define dd ((struct IEAudioData*) AudioCtrl->ahiac_DriverData)
 
@@ -82,59 +84,38 @@ static ULONG IE_ResampleStereo(struct ExecBase *SysBase,
         srcR[i] = src[i * 2 + 1];
     }
 
-    /* Dispatch WARP_OP_AUDIO_RESAMPLE for left channel */
-    ie_write32(IE_COPROC_CPU_TYPE, IE_EXEC_TYPE_IE64);
-    ie_write32(IE_COPROC_OP, WARP_OP_AUDIO_RESAMPLE);
-    ie_write32(IE_COPROC_REQ_PTR, (ULONG)srcL);
-    ie_write32(IE_COPROC_REQ_LEN, srcSamples);
-    ie_write32(IE_COPROC_RESP_PTR, (ULONG)dstL);
-    ie_write32(IE_COPROC_RESP_CAP,
-               (srcRate & 0xFFFF) | (dstRate << 16));
-    ie_write32(IE_COPROC_CMD, IE_COPROC_CMD_ENQUEUE);
-
-    if (ie_read32(IE_COPROC_CMD_STATUS) != 0)
+    /* Dispatch audio resample via iewarp.library */
+    if (!IEWARP_OPEN())
     {
         FreeMem(srcL, srcBytes * 2 + dstBytes * 2);
         return 0;
     }
 
+    IEWarpSetCaller(IEWARP_CALLER_AHI);
     {
-        ULONG ticketL = ie_read32(IE_COPROC_TICKET);
+        ULONG ticketL = IEWarpAudioResample(
+            (APTR)srcL, (APTR)dstL, srcSamples, srcRate, dstRate);
+        ULONG ticketR;
 
-        /* Dispatch right channel */
-        ie_write32(IE_COPROC_CPU_TYPE, IE_EXEC_TYPE_IE64);
-        ie_write32(IE_COPROC_OP, WARP_OP_AUDIO_RESAMPLE);
-        ie_write32(IE_COPROC_REQ_PTR, (ULONG)srcR);
-        ie_write32(IE_COPROC_REQ_LEN, srcSamples);
-        ie_write32(IE_COPROC_RESP_PTR, (ULONG)dstR);
-        ie_write32(IE_COPROC_RESP_CAP,
-                   (srcRate & 0xFFFF) | (dstRate << 16));
-        ie_write32(IE_COPROC_CMD, IE_COPROC_CMD_ENQUEUE);
-
-        if (ie_read32(IE_COPROC_CMD_STATUS) != 0)
+        if (!ticketL)
         {
-            /* Wait for left channel to finish before freeing */
-            ie_write32(IE_COPROC_TICKET, ticketL);
-            ie_write32(IE_COPROC_TIMEOUT, 1000);
-            ie_write32(IE_COPROC_CMD, IE_COPROC_CMD_WAIT_CMD);
             FreeMem(srcL, srcBytes * 2 + dstBytes * 2);
             return 0;
         }
 
+        ticketR = IEWarpAudioResample(
+            (APTR)srcR, (APTR)dstR, srcSamples, srcRate, dstRate);
+
+        if (!ticketR)
         {
-            ULONG ticketR = ie_read32(IE_COPROC_TICKET);
-
-            /* Wait for both channels */
-            ie_write32(IE_COPROC_TICKET, ticketR);
-            ie_write32(IE_COPROC_TIMEOUT, 1000);
-            ie_write32(IE_COPROC_CMD, IE_COPROC_CMD_WAIT_CMD);
-
-            if (ie_read32(IE_COPROC_TICKET_STATUS) != IE_COPROC_ST_OK)
-            {
-                FreeMem(srcL, srcBytes * 2 + dstBytes * 2);
-                return 0;
-            }
+            IEWarpWait(ticketL);
+            FreeMem(srcL, srcBytes * 2 + dstBytes * 2);
+            return 0;
         }
+
+        /* Wait for both channels */
+        IEWarpWait(ticketL);
+        IEWarpWait(ticketR);
 
         /* Re-interleave mono L/R → stereo */
         for (i = 0; i < dstSamples; i++)

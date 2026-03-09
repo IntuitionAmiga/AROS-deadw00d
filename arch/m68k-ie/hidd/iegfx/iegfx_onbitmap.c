@@ -28,6 +28,9 @@
 #include <ie_hwreg.h>
 #include <libraries/iewarp.h>
 
+static struct Library *IEWarpBase = NULL;
+#include <iewarp_consumer.h>
+
 #include "iegfx_bitmap.h"
 #include "iegfx_hidd.h"
 
@@ -40,64 +43,52 @@
  * Dispatch a fill or copy operation to the IE64 coprocessor via MMIO.
  * Returns TRUE if dispatched and completed, FALSE if caller should fallback.
  */
-static BOOL IE_WarpFillRect(ULONG dst, UWORD w, UWORD h, UWORD stride,
-                            ULONG color, UBYTE bpp)
+static BOOL IE_WarpDoFillRect(ULONG dst, UWORD w, UWORD h, UWORD stride,
+                              ULONG color, UBYTE bpp)
 {
     ULONG size = (ULONG)w * (ULONG)h * (ULONG)bpp;
     if (size < WARP_THRESHOLD)
         return FALSE;
 
-    ie_write32(IE_COPROC_CPU_TYPE, IE_EXEC_TYPE_IE64);
-    ie_write32(IE_COPROC_OP, WARP_OP_FILL_RECT);
-    ie_write32(IE_COPROC_REQ_PTR, color);
-    ie_write32(IE_COPROC_REQ_LEN, ((ULONG)w * (ULONG)bpp) | ((ULONG)h << 16));
-    ie_write32(IE_COPROC_RESP_PTR, dst);
-    ie_write32(IE_COPROC_RESP_CAP, (ULONG)stride);
-    ie_write32(IE_COPROC_CMD, IE_COPROC_CMD_ENQUEUE);
-
-    if (ie_read32(IE_COPROC_CMD_STATUS) != 0)
+    if (!IEWARP_OPEN())
         return FALSE;
 
+    IEWarpSetCaller(IEWARP_CALLER_IEGFX);
     {
-        ULONG ticket = ie_read32(IE_COPROC_TICKET);
-        ie_write32(IE_COPROC_TICKET, ticket);
-        ie_write32(IE_COPROC_TIMEOUT, 5000);
-        ie_write32(IE_COPROC_CMD, IE_COPROC_CMD_WAIT_CMD);
-
-        if (ie_read32(IE_COPROC_TICKET_STATUS) != IE_COPROC_ST_OK)
-            return FALSE;
+        ULONG ticket = IEWarpFillRect(
+            (APTR)dst, (UWORD)(w * bpp), h, stride, color);
+        if (ticket)
+        {
+            IEWarpWait(ticket);
+            return TRUE;
+        }
     }
-    return TRUE;
+    return FALSE;
 }
 
-static BOOL IE_WarpBlitCopy(ULONG src, ULONG dst, UWORD w, UWORD h,
-                            UWORD src_stride, UWORD dst_stride, UBYTE bpp)
+static BOOL IE_WarpDoBlitCopy(ULONG src, ULONG dst, UWORD w, UWORD h,
+                              UWORD src_stride, UWORD dst_stride, UBYTE bpp)
 {
     ULONG size = (ULONG)w * (ULONG)h * (ULONG)bpp;
     if (size < WARP_THRESHOLD)
         return FALSE;
 
-    ie_write32(IE_COPROC_CPU_TYPE, IE_EXEC_TYPE_IE64);
-    ie_write32(IE_COPROC_OP, WARP_OP_BLIT_COPY);
-    ie_write32(IE_COPROC_REQ_PTR, src);
-    ie_write32(IE_COPROC_REQ_LEN, ((ULONG)w * (ULONG)bpp) | ((ULONG)h << 16));
-    ie_write32(IE_COPROC_RESP_PTR, dst);
-    ie_write32(IE_COPROC_RESP_CAP, (ULONG)src_stride | ((ULONG)dst_stride << 16));
-    ie_write32(IE_COPROC_CMD, IE_COPROC_CMD_ENQUEUE);
-
-    if (ie_read32(IE_COPROC_CMD_STATUS) != 0)
+    if (!IEWARP_OPEN())
         return FALSE;
 
+    IEWarpSetCaller(IEWARP_CALLER_IEGFX);
     {
-        ULONG ticket = ie_read32(IE_COPROC_TICKET);
-        ie_write32(IE_COPROC_TICKET, ticket);
-        ie_write32(IE_COPROC_TIMEOUT, 5000);
-        ie_write32(IE_COPROC_CMD, IE_COPROC_CMD_WAIT_CMD);
-
-        if (ie_read32(IE_COPROC_TICKET_STATUS) != IE_COPROC_ST_OK)
-            return FALSE;
+        ULONG ticket = IEWarpBlitCopy(
+            (APTR)src, (APTR)dst,
+            (UWORD)(w * bpp), h,
+            src_stride, dst_stride, 0xC0);
+        if (ticket)
+        {
+            IEWarpWait(ticket);
+            return TRUE;
+        }
     }
-    return TRUE;
+    return FALSE;
 }
 
 /*********** BitMap::New() *************************************/
@@ -186,36 +177,26 @@ OOP_Object *METHOD(IEBitMap, Root, New)
             return NULL;
         }
 
-        /* Clear the framebuffer — use IE64 MEMSET for large bitmaps */
+        /* Clear the framebuffer — use iewarp.library MEMSET for large bitmaps */
         {
             ULONG clearSize = data->bytesperline * data->height;
+            BOOL cleared = FALSE;
 
-            if (clearSize >= WARP_THRESHOLD)
+            if (clearSize >= WARP_THRESHOLD && IEWARP_OPEN())
             {
-                ie_write32(IE_COPROC_CPU_TYPE, IE_EXEC_TYPE_IE64);
-                ie_write32(IE_COPROC_OP, WARP_OP_MEMSET);
-                ie_write32(IE_COPROC_REQ_PTR, 0);
-                ie_write32(IE_COPROC_REQ_LEN, clearSize);
-                ie_write32(IE_COPROC_RESP_PTR, (ULONG)data->VideoData);
-                ie_write32(IE_COPROC_RESP_CAP, clearSize);
-                ie_write32(IE_COPROC_CMD, IE_COPROC_CMD_ENQUEUE);
-
-                if (ie_read32(IE_COPROC_CMD_STATUS) == 0)
+                IEWarpSetCaller(IEWARP_CALLER_IEGFX);
                 {
-                    ULONG ticket = ie_read32(IE_COPROC_TICKET);
-                    ie_write32(IE_COPROC_TICKET, ticket);
-                    ie_write32(IE_COPROC_TIMEOUT, 5000);
-                    ie_write32(IE_COPROC_CMD, IE_COPROC_CMD_WAIT_CMD);
-                }
-                else
-                {
-                    memset(data->VideoData, 0, clearSize);
+                    ULONG ticket = IEWarpMemSet(data->VideoData, 0, clearSize);
+                    if (ticket)
+                    {
+                        IEWarpWait(ticket);
+                        cleared = TRUE;
+                    }
                 }
             }
-            else
-            {
+
+            if (!cleared)
                 memset(data->VideoData, 0, clearSize);
-            }
         }
 
         /* Tell ChunkyBM superclass where to draw */
@@ -350,7 +331,7 @@ VOID METHOD(IEBitMap, Hidd_BitMap, FillRect)
 
         /* Try coprocessor for large Copy-mode fills */
         if (mode == vHidd_GC_DrawMode_Copy &&
-            IE_WarpFillRect(dst, w, h, data->bytesperline,
+            IE_WarpDoFillRect(dst, w, h, data->bytesperline,
                             fg, data->bytesperpix))
             return;
 
@@ -377,7 +358,7 @@ VOID METHOD(IEBitMap, Hidd_BitMap, Clear)
         ULONG dst = (ULONG)data->VideoData;
 
         /* Full bitmap clear — always qualifies for coprocessor */
-        if (IE_WarpFillRect(dst, data->width, data->height,
+        if (IE_WarpDoFillRect(dst, data->width, data->height,
                             data->bytesperline, bg, data->bytesperpix))
             return;
 
@@ -466,30 +447,20 @@ VOID METHOD(IEBitMap, Hidd_BitMap, PutAlphaTemplate)
                     msg->y * data->bytesperline +
                     msg->x * data->bytesperpix;
 
-        /* Try IE64 coprocessor for large alpha blits */
-        if (size >= WARP_THRESHOLD)
+        /* Try iewarp.library for large alpha blits */
+        if (size >= WARP_THRESHOLD && IEWARP_OPEN())
         {
-            ie_write32(IE_COPROC_CPU_TYPE, IE_EXEC_TYPE_IE64);
-            ie_write32(IE_COPROC_OP, WARP_OP_BLIT_ALPHA);
-            ie_write32(IE_COPROC_REQ_PTR, (ULONG)msg->alpha);
-            ie_write32(IE_COPROC_REQ_LEN,
-                       (ULONG)msg->width | ((ULONG)msg->height << 16));
-            ie_write32(IE_COPROC_RESP_PTR, dst);
-            ie_write32(IE_COPROC_RESP_CAP,
-                       (ULONG)msg->modulo |
-                       ((ULONG)data->bytesperline << 16));
-            ie_write32(IE_COPROC_TIMEOUT, fg);  /* FG color in r29 (flags) */
-            ie_write32(IE_COPROC_CMD, IE_COPROC_CMD_ENQUEUE);
-
-            if (ie_read32(IE_COPROC_CMD_STATUS) == 0)
+            IEWarpSetCaller(IEWARP_CALLER_IEGFX);
             {
-                ULONG ticket = ie_read32(IE_COPROC_TICKET);
-                ie_write32(IE_COPROC_TICKET, ticket);
-                ie_write32(IE_COPROC_TIMEOUT, 5000);
-                ie_write32(IE_COPROC_CMD, IE_COPROC_CMD_WAIT_CMD);
-
-                if (ie_read32(IE_COPROC_TICKET_STATUS) == IE_COPROC_ST_OK)
+                ULONG ticket = IEWarpBlitAlpha(
+                    (APTR)msg->alpha, (APTR)dst,
+                    msg->width, msg->height,
+                    msg->modulo, data->bytesperline);
+                if (ticket)
+                {
+                    IEWarpWait(ticket);
                     return;
+                }
             }
             /* Dispatch failed — fall through to superclass */
         }
@@ -524,7 +495,7 @@ VOID METHOD(IEBitMap, Hidd_BitMap, PutImage)
                     msg->x * data->bytesperpix;
 
         /* Try coprocessor for large images */
-        if (IE_WarpBlitCopy(src, dst, msg->width, msg->height,
+        if (IE_WarpDoBlitCopy(src, dst, msg->width, msg->height,
                             msg->modulo, data->bytesperline,
                             data->bytesperpix))
             return;
@@ -549,7 +520,7 @@ VOID METHOD(IEBitMap, Hidd_BitMap, PutImage)
                     msg->x * data->bytesperpix;
 
         /* Try coprocessor for large images */
-        if (IE_WarpBlitCopy(src, dst, msg->width, msg->height,
+        if (IE_WarpDoBlitCopy(src, dst, msg->width, msg->height,
                             msg->modulo, data->bytesperline, 4))
             return;
 
@@ -582,31 +553,23 @@ VOID METHOD(IEBitMap, Hidd_BitMap, PutImage)
         {
             ULONG size = (ULONG)msg->width * (ULONG)msg->height;
 
-            if (size >= WARP_THRESHOLD)
+            if (size >= WARP_THRESHOLD && IEWARP_OPEN())
             {
                 ULONG dst = (ULONG)data->VideoData +
                             msg->y * data->bytesperline +
                             msg->x * data->bytesperpix;
 
-                ie_write32(IE_COPROC_CPU_TYPE, IE_EXEC_TYPE_IE64);
-                ie_write32(IE_COPROC_OP, WARP_OP_BLIT_CONVERT);
-                ie_write32(IE_COPROC_REQ_PTR, (ULONG)msg->pixels);
-                ie_write32(IE_COPROC_REQ_LEN,
-                           (ULONG)msg->width | ((ULONG)msg->height << 16));
-                ie_write32(IE_COPROC_RESP_PTR, dst);
-                ie_write32(IE_COPROC_RESP_CAP,
-                           warpSrcFmt | (WARP_PIXFMT_RGBA32 << 16));
-                ie_write32(IE_COPROC_CMD, IE_COPROC_CMD_ENQUEUE);
-
-                if (ie_read32(IE_COPROC_CMD_STATUS) == 0)
+                IEWarpSetCaller(IEWARP_CALLER_IEGFX);
                 {
-                    ULONG ticket = ie_read32(IE_COPROC_TICKET);
-                    ie_write32(IE_COPROC_TICKET, ticket);
-                    ie_write32(IE_COPROC_TIMEOUT, 5000);
-                    ie_write32(IE_COPROC_CMD, IE_COPROC_CMD_WAIT_CMD);
-
-                    if (ie_read32(IE_COPROC_TICKET_STATUS) == IE_COPROC_ST_OK)
+                    ULONG ticket = IEWarpBlitConvert(
+                        (APTR)msg->pixels, (APTR)dst,
+                        msg->width, msg->height,
+                        warpSrcFmt, WARP_PIXFMT_RGBA32);
+                    if (ticket)
+                    {
+                        IEWarpWait(ticket);
                         return;
+                    }
                 }
                 /* Dispatch failed — fall through to superclass */
             }

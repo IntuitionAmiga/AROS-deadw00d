@@ -13,6 +13,9 @@
 #include <libraries/iewarp.h>
 #include <ie_hwreg.h>
 
+static struct Library *IEWarpBase = NULL;
+#include <iewarp_consumer.h>
+
 AROS_LH1(void, BitMapScale,
     AROS_LHA(struct BitScaleArgs *, bsa, A0),
     struct GfxBase *, GfxBase,
@@ -27,33 +30,25 @@ AROS_LH1(void, BitMapScale,
 
     totalBytes = (ULONG)bsa->bsa_SrcWidth * (ULONG)bsa->bsa_SrcHeight;
 
-    if (totalBytes >= 4096)
+    if (totalBytes >= 4096 && IEWARP_OPEN())
     {
-        /* Attempt IE64 coprocessor dispatch for large bitmaps */
         APTR src = bsa->bsa_SrcBitMap->Planes[0];
         APTR dst = bsa->bsa_DestBitMap->Planes[0];
 
         if (src && dst)
         {
-            ie_write32(IE_COPROC_CPU_TYPE, IE_EXEC_TYPE_IE64);
-            ie_write32(IE_COPROC_OP, WARP_OP_BLIT_SCALE);
-            ie_write32(IE_COPROC_REQ_PTR, (ULONG)src);
-            ie_write32(IE_COPROC_REQ_LEN,
-                       ((ULONG)bsa->bsa_SrcWidth) | ((ULONG)bsa->bsa_SrcHeight << 16));
-            ie_write32(IE_COPROC_RESP_PTR, (ULONG)dst);
-            ie_write32(IE_COPROC_RESP_CAP,
-                       ((ULONG)bsa->bsa_DestWidth) | ((ULONG)bsa->bsa_DestHeight << 16));
-            ie_write32(IE_COPROC_CMD, IE_COPROC_CMD_ENQUEUE);
-
-            if (ie_read32(IE_COPROC_CMD_STATUS) == 0)
+            IEWarpSetCaller(IEWARP_CALLER_GRAPHICS);
             {
-                ULONG ticket = ie_read32(IE_COPROC_TICKET);
-                ie_write32(IE_COPROC_TICKET, ticket);
-                ie_write32(IE_COPROC_TIMEOUT, 5000);
-                ie_write32(IE_COPROC_CMD, IE_COPROC_CMD_WAIT_CMD);
-
-                if (ie_read32(IE_COPROC_TICKET_STATUS) == IE_COPROC_ST_OK)
+                ULONG ticket = IEWarpBlitScale(
+                    src, dst,
+                    bsa->bsa_SrcWidth, bsa->bsa_SrcHeight,
+                    (bsa->bsa_SrcWidth * bsa->bsa_XDestFactor) / bsa->bsa_XSrcFactor,
+                    (bsa->bsa_SrcHeight * bsa->bsa_YDestFactor) / bsa->bsa_YSrcFactor,
+                    bsa->bsa_SrcBitMap->BytesPerRow,
+                    bsa->bsa_DestBitMap->BytesPerRow);
+                if (ticket)
                 {
+                    IEWarpWait(ticket);
                     bsa->bsa_DestWidth = (bsa->bsa_SrcWidth * bsa->bsa_XDestFactor) / bsa->bsa_XSrcFactor;
                     bsa->bsa_DestHeight = (bsa->bsa_SrcHeight * bsa->bsa_YDestFactor) / bsa->bsa_YSrcFactor;
                     return;

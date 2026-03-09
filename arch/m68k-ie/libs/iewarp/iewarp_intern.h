@@ -32,6 +32,15 @@ struct IEWarpBase
     ULONG           lastTicket;     /* Last ticket from batched ops */
     struct Interrupt coprocInterrupt; /* Level 6 completion interrupt */
     struct IEWarpWaiter waiters[IEWARP_MAX_WAITERS]; /* Per-ticket wait slots */
+
+    /* Stats tracking (IEWarpMon) */
+    struct IEWarpOpCounter   opCounters[IEWARP_MAX_OPS];
+    struct IEWarpTaskEntry   taskStats[IEWARP_MAX_TASKS];
+    struct IEWarpCallerEntry callerStats[IEWARP_MAX_CALLERS];
+    struct IEWarpErrorStats  errors;
+    struct IEWarpBatchStats  batchStats;
+    ULONG                    ringHighWater;
+    ULONG                    taskCallerID[IEWARP_MAX_TASKS];
 };
 
 /* Dispatch a warp operation to the IE64 coprocessor.
@@ -39,5 +48,10 @@ struct IEWarpBase
 ULONG ie_warp_dispatch(struct IEWarpBase *base, ULONG op,
                        APTR reqBuf, ULONG reqLen,
                        APTR respBuf, ULONG respCap);
+
+/* Stats tracking helpers */
+void ie_warp_track_accel(struct IEWarpBase *base, ULONG op, ULONG bytes);
+void ie_warp_track_fallback(struct IEWarpBase *base, ULONG op, ULONG bytes);
+void ie_warp_track_error(struct IEWarpBase *base, ULONG errorCode);
 
 #endif /* IEWARP_INTERN_H */

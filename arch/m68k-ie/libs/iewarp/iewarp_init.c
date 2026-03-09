@@ -46,6 +46,55 @@ static int IEWarp_Init(struct IEWarpBase *base)
             base->waiters[i].task = NULL;
     }
 
+    /* Initialize stats tables */
+    {
+        int i;
+        for (i = 0; i < IEWARP_MAX_OPS; i++)
+        {
+            base->opCounters[i].accelCount = 0;
+            base->opCounters[i].accelBytes = 0;
+            base->opCounters[i].fallbackCount = 0;
+            base->opCounters[i].fallbackBytes = 0;
+        }
+        /* Slot 0 is the overflow sentinel */
+        base->taskStats[0].task = (struct Task *)0xFFFFFFFF;
+        base->taskStats[0].name[0] = '(';
+        base->taskStats[0].name[1] = 'o';
+        base->taskStats[0].name[2] = 'v';
+        base->taskStats[0].name[3] = 'e';
+        base->taskStats[0].name[4] = 'r';
+        base->taskStats[0].name[5] = 'f';
+        base->taskStats[0].name[6] = 'l';
+        base->taskStats[0].name[7] = 'o';
+        base->taskStats[0].name[8] = 'w';
+        base->taskStats[0].name[9] = ')';
+        base->taskStats[0].name[10] = 0;
+        base->taskStats[0].ops = 0;
+        base->taskStats[0].bytes = 0;
+        for (i = 1; i < IEWARP_MAX_TASKS; i++)
+        {
+            base->taskStats[i].task = NULL;
+            base->taskStats[i].ops = 0;
+            base->taskStats[i].bytes = 0;
+            base->taskCallerID[i] = 0;
+        }
+        for (i = 0; i < IEWARP_MAX_CALLERS; i++)
+        {
+            base->callerStats[i].callerID = 0;
+            base->callerStats[i].ops = 0;
+            base->callerStats[i].bytes = 0;
+        }
+        base->errors.queueFull = 0;
+        base->errors.workerDown = 0;
+        base->errors.staleTicket = 0;
+        base->errors.enqueueFail = 0;
+        base->batchStats.batchCount = 0;
+        base->batchStats.totalBatchedOps = 0;
+        base->batchStats.maxBatchSize = 0;
+        base->batchStats.currentBatchOps = 0;
+        base->ringHighWater = 0;
+    }
+
     /* The service filename string is in ROM (static const).
      * Pass its bus address directly — the Go-side readFileName()
      * reads from bus memory, and ROM at 0x600000+ is bus-accessible. */

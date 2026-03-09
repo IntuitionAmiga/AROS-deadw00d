@@ -253,6 +253,12 @@
 #define IE_COPROC_DISPATCH_OVERHEAD 0xF2384     /* Calibrated overhead ns (R) */
 #define IE_COPROC_COMPLETED_TICKET  0xF2388     /* Last completed ticket (R) */
 
+/* Extended monitor registers (after clipboard bridge gap) */
+#define IE_COPROC_RING_DEPTH        0xF23B0     /* IE64 ring occupancy (R) */
+#define IE_COPROC_WORKER_UPTIME     0xF23B4     /* Seconds since IE64 worker started (R) */
+#define IE_COPROC_STATS_RESET       0xF23B8     /* Write 1 to zero stats (W) */
+#define IE_COPROC_BUSY_PCT          0xF23BC     /* Worker busy % 0-100 (R) */
+
 /* Coprocessor commands */
 #define IE_COPROC_CMD_START     1
 #define IE_COPROC_CMD_STOP      2

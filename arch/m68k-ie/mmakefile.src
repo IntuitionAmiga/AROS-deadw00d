@@ -19,7 +19,8 @@ include $(SRCDIR)/config/aros.cfg
 #MM     kernel-iewarp
 
 #MM- software-ie-m68k : general-setup binary-ie-m68k \
-#MM	    workbench-ie-m68k
+#MM	    workbench-ie-m68k \
+#MM	    arch-ie-m68k-utilities-iewarpmon
 
 #MM- workbench-ie-m68k : workbench-complete workbench
 

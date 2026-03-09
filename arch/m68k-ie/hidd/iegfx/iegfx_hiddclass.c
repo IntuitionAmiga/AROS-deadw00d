@@ -27,6 +27,9 @@
 #include <ie_hwreg.h>
 #include <libraries/iewarp.h>
 
+static struct Library *IEWarpBase = NULL;
+#include <iewarp_consumer.h>
+
 #include "iegfx_hidd.h"
 #include "iegfx_bitmap.h"
 #include "iegfx_hw.h"
@@ -308,28 +311,23 @@ void METHOD(IEGfx, Hidd_Gfx, CopyBox)
             {
                 ULONG widthBytes = (ULONG)msg->width * (ULONG)bm_src->bytesperpix;
 
-                ie_write32(IE_COPROC_CPU_TYPE, IE_EXEC_TYPE_IE64);
-                ie_write32(IE_COPROC_OP, WARP_OP_BLIT_COPY);
-                ie_write32(IE_COPROC_REQ_PTR, src_offset);
-                ie_write32(IE_COPROC_REQ_LEN,
-                           widthBytes | ((ULONG)msg->height << 16));
-                ie_write32(IE_COPROC_RESP_PTR, dst_offset);
-                ie_write32(IE_COPROC_RESP_CAP,
-                           (ULONG)bm_src->bytesperline |
-                           ((ULONG)bm_dst->bytesperline << 16));
-                ie_write32(IE_COPROC_CMD, IE_COPROC_CMD_ENQUEUE);
-
-                if (ie_read32(IE_COPROC_CMD_STATUS) == 0)
+                if (IEWARP_OPEN())
                 {
-                    ULONG ticket = ie_read32(IE_COPROC_TICKET);
-                    ie_write32(IE_COPROC_TICKET, ticket);
-                    ie_write32(IE_COPROC_TIMEOUT, 5000);
-                    ie_write32(IE_COPROC_CMD, IE_COPROC_CMD_WAIT_CMD);
-
-                    if (ie_read32(IE_COPROC_TICKET_STATUS) == IE_COPROC_ST_OK)
-                        return;
+                    IEWarpSetCaller(IEWARP_CALLER_IEGFX);
+                    {
+                        ULONG ticket = IEWarpBlitCopy(
+                            (APTR)src_offset, (APTR)dst_offset,
+                            widthBytes, msg->height,
+                            bm_src->bytesperline, bm_dst->bytesperline,
+                            0xC0);
+                        if (ticket)
+                        {
+                            IEWarpWait(ticket);
+                            return;
+                        }
+                    }
                 }
-                /* Enqueue or completion failed — fall through to blitter */
+                /* Library unavailable or dispatch failed — fall through to blitter */
             }
         }
 
@@ -407,31 +405,20 @@ BOOL METHOD(IEGfx, Hidd_Gfx, CopyBoxMasked)
                                         msg->destY * bm_dst->bytesperline +
                                         msg->destX * bm_dst->bytesperpix;
 
-                        ie_write32(IE_COPROC_CPU_TYPE, IE_EXEC_TYPE_IE64);
-                        ie_write32(IE_COPROC_OP, WARP_OP_BLIT_MASK);
-                        ie_write32(IE_COPROC_REQ_PTR, src_off);
-                        ie_write32(IE_COPROC_REQ_LEN,
-                                   ((ULONG)msg->width * 4) |
-                                   ((ULONG)msg->height << 16));
-                        ie_write32(IE_COPROC_RESP_PTR, dst_off);
-                        ie_write32(IE_COPROC_RESP_CAP,
-                                   (ULONG)bm_src->bytesperline |
-                                   ((ULONG)bm_dst->bytesperline << 16));
-                        ie_write32(IE_COPROC_TIMEOUT, (ULONG)byteMask);
-                        ie_write32(IE_COPROC_CMD, IE_COPROC_CMD_ENQUEUE);
-
-                        if (ie_read32(IE_COPROC_CMD_STATUS) == 0)
+                        if (IEWARP_OPEN())
                         {
-                            ULONG ticket = ie_read32(IE_COPROC_TICKET);
-                            ie_write32(IE_COPROC_TICKET, ticket);
-                            ie_write32(IE_COPROC_TIMEOUT, 5000);
-                            ie_write32(IE_COPROC_CMD, IE_COPROC_CMD_WAIT_CMD);
-
-                            if (ie_read32(IE_COPROC_TICKET_STATUS) ==
-                                IE_COPROC_ST_OK)
+                            IEWarpSetCaller(IEWARP_CALLER_IEGFX);
                             {
-                                FreeMem(byteMask, maskBytes);
-                                return TRUE;
+                                ULONG ticket = IEWarpBlitMask(
+                                    (APTR)src_off, (APTR)dst_off, (APTR)byteMask,
+                                    (UWORD)(msg->width * 4), msg->height,
+                                    bm_src->bytesperline, bm_dst->bytesperline);
+                                if (ticket)
+                                {
+                                    IEWarpWait(ticket);
+                                    FreeMem(byteMask, maskBytes);
+                                    return TRUE;
+                                }
                             }
                         }
                     }

@@ -9,35 +9,8 @@
 #ifdef __mc68000__
 #include <libraries/iewarp.h>
 #include <ie_hwreg.h>
-
-/*
- * IE64 accelerated audio block decoding.
- * Dispatches WARP_OP_AUDIO_DECODE with bulk compressed data.
- * REQ_PTR = compressed source, REQ_LEN = source length in bytes,
- * RESP_PTR = decoded dest, RESP_CAP = codec format tag.
- * Returns number of frames decoded, or 0 on failure.
- */
-static LONG ie_decode_blocks(UBYTE *src, UBYTE *dst, LONG src_len, UWORD codec_tag)
-{
-    ie_write32(IE_COPROC_CPU_TYPE, IE_EXEC_TYPE_IE64);
-    ie_write32(IE_COPROC_OP, WARP_OP_AUDIO_DECODE);
-    ie_write32(IE_COPROC_REQ_PTR, (ULONG)src);
-    ie_write32(IE_COPROC_REQ_LEN, (ULONG)src_len);
-    ie_write32(IE_COPROC_RESP_PTR, (ULONG)dst);
-    ie_write32(IE_COPROC_RESP_CAP, (ULONG)codec_tag);
-    ie_write32(IE_COPROC_CMD, IE_COPROC_CMD_ENQUEUE);
-
-    if (ie_read32(IE_COPROC_CMD_STATUS) == 0)
-    {
-        ULONG ticket = ie_read32(IE_COPROC_TICKET);
-        ie_write32(IE_COPROC_TICKET, ticket);
-        ie_write32(IE_COPROC_TIMEOUT, 10000);
-        ie_write32(IE_COPROC_CMD, IE_COPROC_CMD_WAIT_CMD);
-        if (ie_read32(IE_COPROC_TICKET_STATUS) == IE_COPROC_ST_OK)
-            return 1;  /* success — IE64 decoded all blocks */
-    }
-    return 0;  /* fallback to M68K */
-}
+static struct Library *IEWarpBase = NULL;
+#include <iewarp_consumer.h>
 
 #define IE_AUDIO_DECODE_THRESHOLD 1024  /* minimum bytes for IE64 dispatch */
 #endif
@@ -92,10 +65,19 @@ DECODERPROTO(DecodeBlocks) {
 	/* IE64 accelerated bulk decode for large audio blocks */
 	{
 		LONG total_src_bytes = ((numFrames + frames - 1) / frames) * blocksize;
-		if (total_src_bytes >= IE_AUDIO_DECODE_THRESHOLD &&
-		    ie_decode_blocks((UBYTE *)Src, (UBYTE *)Dst, total_src_bytes, fmt->formatTag))
+		if (total_src_bytes >= IE_AUDIO_DECODE_THRESHOLD && IEWARP_OPEN())
 		{
-			return numFrames;
+			IEWarpSetCaller(IEWARP_CALLER_DATATYPES);
+			{
+				ULONG ticket = IEWarpAudioDecode(
+					(APTR)Src, (APTR)Dst, (ULONG)total_src_bytes,
+					(UWORD)fmt->formatTag);
+				if (ticket)
+				{
+					IEWarpWait(ticket);
+					return numFrames;
+				}
+			}
 		}
 	}
 #endif

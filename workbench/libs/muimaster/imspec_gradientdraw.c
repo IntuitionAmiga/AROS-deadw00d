@@ -22,6 +22,8 @@
 #ifdef __mc68000__
 #include <libraries/iewarp.h>
 #include <ie_hwreg.h>
+static struct Library *IEWarpBase = NULL;
+#include <iewarp_consumer.h>
 #endif
 #define MYDEBUG 1
 #include "debug.h"
@@ -82,32 +84,24 @@ STATIC VOID TrueDitherV
     if (width * (y2 - y1 + 1) >= 1024)
     {
         struct BitMap *bm = rp->BitMap;
-        if (bm && bm->Planes[0])
+        if (bm && bm->Planes[0] && IEWARP_OPEN())
         {
             ULONG startColor = (start_rgb[0] << 16) | (start_rgb[1] << 8) | start_rgb[2];
             ULONG endColor = (end_rgb[0] << 16) | (end_rgb[1] << 8) | end_rgb[2];
-            ULONG dst = (ULONG)bm->Planes[0] +
-                        y1 * bm->BytesPerRow + x1 * 4;
+            APTR dst = (APTR)((ULONG)bm->Planes[0] +
+                        y1 * bm->BytesPerRow + x1 * 4);
 
-            ie_write32(IE_COPROC_CPU_TYPE, IE_EXEC_TYPE_IE64);
-            ie_write32(IE_COPROC_OP, WARP_OP_GRADIENT_FILL);
-            ie_write32(IE_COPROC_REQ_PTR, startColor);
-            ie_write32(IE_COPROC_REQ_LEN,
-                       ((ULONG)width) | ((ULONG)(y2 - y1 + 1) << 16));
-            ie_write32(IE_COPROC_RESP_PTR, dst);
-            ie_write32(IE_COPROC_RESP_CAP,
-                       (ULONG)bm->BytesPerRow | (0UL << 16));  /* stride | direction=vertical */
-            ie_write32(IE_COPROC_TIMEOUT, endColor);
-            ie_write32(IE_COPROC_CMD, IE_COPROC_CMD_ENQUEUE);
-
-            if (ie_read32(IE_COPROC_CMD_STATUS) == 0)
+            IEWarpSetCaller(IEWARP_CALLER_MUI);
             {
-                ULONG ticket = ie_read32(IE_COPROC_TICKET);
-                ie_write32(IE_COPROC_TICKET, ticket);
-                ie_write32(IE_COPROC_TIMEOUT, 5000);
-                ie_write32(IE_COPROC_CMD, IE_COPROC_CMD_WAIT_CMD);
-                if (ie_read32(IE_COPROC_TICKET_STATUS) == IE_COPROC_ST_OK)
+                ULONG ticket = IEWarpGradientFill(
+                    dst, (UWORD)width, (UWORD)(y2 - y1 + 1),
+                    (UWORD)bm->BytesPerRow, startColor, endColor,
+                    WARP_GRADIENT_VERTICAL);
+                if (ticket)
+                {
+                    IEWarpWait(ticket);
                     return;
+                }
             }
         }
     }
@@ -156,32 +150,24 @@ STATIC VOID TrueDitherH
     if (width * height >= 1024)
     {
         struct BitMap *bm = rp->BitMap;
-        if (bm && bm->Planes[0])
+        if (bm && bm->Planes[0] && IEWARP_OPEN())
         {
             ULONG startColor = (start_rgb[0] << 16) | (start_rgb[1] << 8) | start_rgb[2];
             ULONG endColor = (end_rgb[0] << 16) | (end_rgb[1] << 8) | end_rgb[2];
-            ULONG dst = (ULONG)bm->Planes[0] +
-                        y1 * bm->BytesPerRow + x1 * 4;
+            APTR dst = (APTR)((ULONG)bm->Planes[0] +
+                        y1 * bm->BytesPerRow + x1 * 4);
 
-            ie_write32(IE_COPROC_CPU_TYPE, IE_EXEC_TYPE_IE64);
-            ie_write32(IE_COPROC_OP, WARP_OP_GRADIENT_FILL);
-            ie_write32(IE_COPROC_REQ_PTR, startColor);
-            ie_write32(IE_COPROC_REQ_LEN,
-                       ((ULONG)width) | ((ULONG)height << 16));
-            ie_write32(IE_COPROC_RESP_PTR, dst);
-            ie_write32(IE_COPROC_RESP_CAP,
-                       (ULONG)bm->BytesPerRow | (1UL << 16));  /* stride | direction=horizontal */
-            ie_write32(IE_COPROC_TIMEOUT, endColor);
-            ie_write32(IE_COPROC_CMD, IE_COPROC_CMD_ENQUEUE);
-
-            if (ie_read32(IE_COPROC_CMD_STATUS) == 0)
+            IEWarpSetCaller(IEWARP_CALLER_MUI);
             {
-                ULONG ticket = ie_read32(IE_COPROC_TICKET);
-                ie_write32(IE_COPROC_TICKET, ticket);
-                ie_write32(IE_COPROC_TIMEOUT, 5000);
-                ie_write32(IE_COPROC_CMD, IE_COPROC_CMD_WAIT_CMD);
-                if (ie_read32(IE_COPROC_TICKET_STATUS) == IE_COPROC_ST_OK)
+                ULONG ticket = IEWarpGradientFill(
+                    dst, (UWORD)width, (UWORD)height,
+                    (UWORD)bm->BytesPerRow, startColor, endColor,
+                    WARP_GRADIENT_HORIZONTAL);
+                if (ticket)
+                {
+                    IEWarpWait(ticket);
                     return;
+                }
             }
         }
     }

@@ -16,6 +16,8 @@
 #ifdef __mc68000__
 #include <libraries/iewarp.h>
 #include <ie_hwreg.h>
+static struct Library *IEWarpBase = NULL;
+#include <iewarp_consumer.h>
 #endif
 
 /* Bitmap scaling */
@@ -620,26 +622,20 @@ static void ScaleRect(ULONG *Target, const ULONG *Source, int SrcWidth, int SrcH
 {
 #ifdef __mc68000__
     /* Attempt IE64 coprocessor scale for large images */
-    if ((ULONG)SrcWidth * SrcHeight * 4 >= 4096)
+    if ((ULONG)SrcWidth * SrcHeight * 4 >= 4096 && IEWARP_OPEN())
     {
-        ie_write32(IE_COPROC_CPU_TYPE, IE_EXEC_TYPE_IE64);
-        ie_write32(IE_COPROC_OP, WARP_OP_BLIT_SCALE);
-        ie_write32(IE_COPROC_REQ_PTR, (ULONG)Source);
-        ie_write32(IE_COPROC_REQ_LEN,
-                   ((ULONG)SrcWidth) | ((ULONG)SrcHeight << 16));
-        ie_write32(IE_COPROC_RESP_PTR, (ULONG)Target);
-        ie_write32(IE_COPROC_RESP_CAP,
-                   ((ULONG)TgtWidth) | ((ULONG)TgtHeight << 16));
-        ie_write32(IE_COPROC_CMD, IE_COPROC_CMD_ENQUEUE);
-
-        if (ie_read32(IE_COPROC_CMD_STATUS) == 0)
+        IEWarpSetCaller(IEWARP_CALLER_ICON);
         {
-            ULONG ticket = ie_read32(IE_COPROC_TICKET);
-            ie_write32(IE_COPROC_TICKET, ticket);
-            ie_write32(IE_COPROC_TIMEOUT, 5000);
-            ie_write32(IE_COPROC_CMD, IE_COPROC_CMD_WAIT_CMD);
-            if (ie_read32(IE_COPROC_TICKET_STATUS) == IE_COPROC_ST_OK)
+            ULONG ticket = IEWarpBlitScale(
+                (APTR)Source, (APTR)Target,
+                (UWORD)SrcWidth, (UWORD)SrcHeight,
+                (UWORD)TgtWidth, (UWORD)TgtHeight,
+                (UWORD)(SrcWidth * 4), (UWORD)(TgtWidth * 4));
+            if (ticket)
+            {
+                IEWarpWait(ticket);
                 return;
+            }
         }
     }
 #endif

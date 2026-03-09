@@ -11,8 +11,11 @@
 #include <graphics/text.h>
 #include <graphics/gfx.h>
 
-#include <ie_hwreg.h>
 #include <libraries/iewarp.h>
+#include <ie_hwreg.h>
+
+static struct Library *IEWarpBase = NULL;
+#include <iewarp_consumer.h>
 
 /* Coprocessor warp dispatch threshold (total glyph pixels) */
 #define GLYPH_WARP_THRESHOLD 2048
@@ -29,11 +32,8 @@ struct GlyphDesc
 };
 
 /*
- * Try to batch-render text via WARP_OP_GLYPH_RENDER.
+ * Try to batch-render text via IEWarpGlyphRender.
  * Returns TRUE if dispatch succeeded, FALSE for fallback.
- *
- * Expands 1-bit font templates to 8-bit alpha data, builds glyph
- * descriptors, and dispatches a single IE64 coprocessor call.
  */
 static BOOL IE_WarpTextBatch(struct RastPort *rp, struct TextFont *tf,
                               CONST_STRPTR string, ULONG count,
@@ -63,6 +63,9 @@ static BOOL IE_WarpTextBatch(struct RastPort *rp, struct TextFont *tf,
     if (totalPixels < GLYPH_WARP_THRESHOLD)
         return FALSE;
 
+    if (!IEWARP_OPEN())
+        return FALSE;
+
     {
         /* Allocate descriptor array + alpha data buffer */
         ULONG descSize = count * sizeof(struct GlyphDesc);
@@ -79,7 +82,7 @@ static BOOL IE_WarpTextBatch(struct RastPort *rp, struct TextFont *tf,
             WORD x = rp->cp_x;
             WORD y = rp->cp_y - tf->tf_Baseline;
 
-            /* Second pass: build descriptors and expand 1-bit→8-bit */
+            /* Second pass: build descriptors and expand 1-bit->8-bit */
             for (i = 0; i < count; i++)
             {
                 UBYTE ch = (UBYTE)string[i];
@@ -126,25 +129,16 @@ static BOOL IE_WarpTextBatch(struct RastPort *rp, struct TextFont *tf,
                     x += ((WORD *)tf->tf_CharKern)[idx];
             }
 
-            /* Dispatch WARP_OP_GLYPH_RENDER */
-            ie_write32(IE_COPROC_CPU_TYPE, IE_EXEC_TYPE_IE64);
-            ie_write32(IE_COPROC_OP, WARP_OP_GLYPH_RENDER);
-            ie_write32(IE_COPROC_REQ_PTR, (ULONG)descs);
-            ie_write32(IE_COPROC_REQ_LEN, count);
-            ie_write32(IE_COPROC_RESP_PTR, dstBase);
-            ie_write32(IE_COPROC_RESP_CAP, dstStride);
-            ie_write32(IE_COPROC_TIMEOUT, (ULONG)alphaData);
-            ie_write32(IE_COPROC_CMD, IE_COPROC_CMD_ENQUEUE);
-
-            if (ie_read32(IE_COPROC_CMD_STATUS) == 0)
+            /* Dispatch via iewarp.library */
+            IEWarpSetCaller(IEWARP_CALLER_GRAPHICS);
             {
-                ULONG ticket = ie_read32(IE_COPROC_TICKET);
-                ie_write32(IE_COPROC_TICKET, ticket);
-                ie_write32(IE_COPROC_TIMEOUT, 5000);
-                ie_write32(IE_COPROC_CMD, IE_COPROC_CMD_WAIT_CMD);
-
-                if (ie_read32(IE_COPROC_TICKET_STATUS) == IE_COPROC_ST_OK)
+                ULONG ticket = IEWarpGlyphRender(
+                    (APTR)descs, count,
+                    (APTR)dstBase, dstStride,
+                    (APTR)alphaData);
+                if (ticket)
                 {
+                    IEWarpWait(ticket);
                     rp->cp_x = x;
                     FreeMem(buf, totalSize);
                     return TRUE;
@@ -174,10 +168,6 @@ AROS_LH3(LONG, Text,
 
     /*
      * Try IE64 batch glyph rendering for large text operations.
-     * Expands 1-bit font templates to 8-bit alpha, builds batch
-     * descriptors, and dispatches a single WARP_OP_GLYPH_RENDER.
-     * Falls back to per-character BltTemplate on small strings or
-     * if the RastPort has no VRAM-backed bitmap.
      */
     if (count >= 4 && rp->BitMap)
     {
@@ -193,8 +183,6 @@ AROS_LH3(LONG, Text,
 
     /*
      * Fallback: render characters one at a time using BltTemplate.
-     * BltTemplate goes through the IEGfx HIDD which has IE64 acceleration
-     * for large template blits (color expansion).
      */
     {
         ULONG i;

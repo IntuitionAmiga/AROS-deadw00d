@@ -13,6 +13,9 @@
 #include <libraries/iewarp.h>
 #include <ie_hwreg.h>
 
+static struct Library *IEWarpBase = NULL;
+#include <iewarp_consumer.h>
+
 #define IE_AREA_THRESHOLD 4096  /* minimum bounding-box area for IE64 dispatch */
 
 AROS_LH1(LONG, AreaEnd,
@@ -50,40 +53,21 @@ AROS_LH1(LONG, AreaEnd,
 
     area = (LONG)(maxX - minX + 1) * (LONG)(maxY - minY + 1);
 
-    /*
-     * For large polygon fills, dispatch WARP_OP_AREA_FILL to IE64.
-     * The coprocessor worker receives the vertex table and renders
-     * the filled polygon directly into the bitmap.
-     *
-     * Parameters:
-     *   REQ_PTR  = AreaInfo->VctrTbl (vertex table pointer)
-     *   REQ_LEN  = AreaInfo->Count (number of vertices)
-     *   RESP_PTR = bitmap base from rp->BitMap->Planes[0]
-     *   RESP_CAP = stride from rp->BitMap->BytesPerRow
-     */
-    if (area >= IE_AREA_THRESHOLD && rp->BitMap)
+    /* Dispatch WARP_OP_AREA_FILL via iewarp.library */
+    if (area >= IE_AREA_THRESHOLD && rp->BitMap && IEWARP_OPEN())
     {
         APTR base = rp->BitMap->Planes[0];
 
         if (base)
         {
-            ie_write32(IE_COPROC_CPU_TYPE, IE_EXEC_TYPE_IE64);
-            ie_write32(IE_COPROC_OP, WARP_OP_AREA_FILL);
-            ie_write32(IE_COPROC_REQ_PTR, (ULONG)vtx);
-            ie_write32(IE_COPROC_REQ_LEN, (ULONG)count);
-            ie_write32(IE_COPROC_RESP_PTR, (ULONG)base);
-            ie_write32(IE_COPROC_RESP_CAP, (ULONG)rp->BitMap->BytesPerRow);
-            ie_write32(IE_COPROC_CMD, IE_COPROC_CMD_ENQUEUE);
-
-            if (ie_read32(IE_COPROC_CMD_STATUS) == 0)
+            IEWarpSetCaller(IEWARP_CALLER_GRAPHICS);
             {
-                ULONG ticket = ie_read32(IE_COPROC_TICKET);
-                ie_write32(IE_COPROC_TICKET, ticket);
-                ie_write32(IE_COPROC_TIMEOUT, 10000);
-                ie_write32(IE_COPROC_CMD, IE_COPROC_CMD_WAIT_CMD);
-
-                if (ie_read32(IE_COPROC_TICKET_STATUS) == IE_COPROC_ST_OK)
+                ULONG ticket = IEWarpAreaFill(
+                    (APTR)vtx, (ULONG)count,
+                    base, (ULONG)rp->BitMap->BytesPerRow);
+                if (ticket)
                 {
+                    IEWarpWait(ticket);
                     ai->Count   = 0;
                     ai->VctrPtr = ai->VctrTbl;
                     ai->FlagPtr = ai->FlagTbl;
@@ -95,12 +79,6 @@ AROS_LH1(LONG, AreaEnd,
 
     /*
      * M68K fallback: scanline polygon fill using RectFill.
-     * RectFill goes through the IEGfx HIDD which has IE64 acceleration
-     * for large rectangles, so even the fallback benefits from hardware.
-     *
-     * Algorithm: for each scanline in the bounding box, find all edge
-     * intersections, sort them, and fill horizontal spans in pairs
-     * (even-odd fill rule).
      */
     {
         WORD y;
