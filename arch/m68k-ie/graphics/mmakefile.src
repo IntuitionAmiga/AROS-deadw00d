@@ -1,0 +1,11 @@
+include $(SRCDIR)/config/aros.cfg
+
+FILES := scrollraster bitmapscale areaend text
+
+USER_INCLUDES := -I$(SRCDIR)/arch/m68k-ie/include
+
+%build_archspecific \
+  mainmmake=kernel-graphics maindir=rom/graphics \
+  arch=ie-m68k files="$(FILES)"
+
+%common

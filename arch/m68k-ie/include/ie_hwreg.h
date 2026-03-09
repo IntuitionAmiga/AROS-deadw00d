@@ -57,6 +57,13 @@
 #define IE_BLT_MODE7_TEX_W     0xF0070     /* Texture width mask (255 = 256-wide) */
 #define IE_BLT_MODE7_TEX_H     0xF0074     /* Texture height mask */
 
+/* Extended blitter registers (BPP mode, draw modes, color expansion) */
+#define IE_BLT_FLAGS            0xF0488     /* BPP, draw mode, JAM1/invert flags */
+#define IE_BLT_FG               0xF048C     /* Foreground color for color expansion */
+#define IE_BLT_BG               0xF0490     /* Background color for color expansion */
+#define IE_BLT_MASK_MOD         0xF0494     /* Template/mask row modulo (bytes) */
+#define IE_BLT_MASK_SRCX        0xF0498     /* Starting X bit offset in template */
+
 /* Blitter operation codes */
 #define IE_BLT_OP_COPY         0           /* Rectangular copy */
 #define IE_BLT_OP_FILL         1           /* Rectangular fill */
@@ -64,11 +71,26 @@
 #define IE_BLT_OP_MASKED       3           /* Masked copy */
 #define IE_BLT_OP_ALPHA        4           /* Alpha blended copy */
 #define IE_BLT_OP_MODE7        5           /* Affine texture mapping */
+#define IE_BLT_OP_COLOR_EXPAND 6           /* 1-bit template to colored pixels */
 
 /* Blitter control bits (BLT_CTRL register) */
 #define IE_BLT_CTRL_START      (1 << 0)    /* Write 1 to start blit */
 #define IE_BLT_CTRL_BUSY       (1 << 1)    /* Read: 1 = blit in progress */
 #define IE_BLT_CTRL_IRQ        (1 << 2)    /* IRQ enable */
+
+/* BLT_FLAGS bit definitions */
+#define IE_BLT_FLAGS_BPP_RGBA32  0x00       /* 4 bytes per pixel (default) */
+#define IE_BLT_FLAGS_BPP_CLUT8   0x01       /* 1 byte per pixel */
+#define IE_BLT_FLAGS_BPP_MASK    0x03       /* Bits 0-1: BPP mode */
+#define IE_BLT_FLAGS_DRAWMODE_SHIFT 4        /* Bits 4-7: draw mode (16 raster ops) */
+#define IE_BLT_FLAGS_DRAWMODE_MASK  0xF0
+#define IE_BLT_FLAGS_JAM1        (1 << 8)   /* Template: skip BG pixels */
+#define IE_BLT_FLAGS_INVERT_TMPL (1 << 9)   /* Invert template bits */
+#define IE_BLT_FLAGS_INVERT_MODE (1 << 10)  /* XOR dst for set template bits */
+
+/* Helper to build BLT_FLAGS value */
+#define IE_BLT_MAKE_FLAGS(bpp, drawmode) \
+    (((bpp) & 0x03) | (((drawmode) & 0x0F) << 4))
 
 /* Copper (0xF000C - 0xF0018) */
 #define IE_COPPER_CTRL      0xF000C     /* Control: bit 0 = enable */
@@ -207,16 +229,64 @@
 #define IE_DOS_CMD_EXAMINE_FH   22  /* ARG1=handle, ARG2=fib_ptr → fills FIB */
 
 /* ========================================================================
- * Clipboard Bridge (0xF2380 - 0xF239F)
+ * Coprocessor MMIO (0xF2340 - 0xF238F)
  * ======================================================================== */
 
-#define IE_CLIP_BASE            0xF2380
-#define IE_CLIP_DATA_PTR        0xF2380     /* Guest RAM pointer for data */
-#define IE_CLIP_DATA_LEN        0xF2384     /* Data length in bytes */
-#define IE_CLIP_CTRL            0xF2388     /* Command: 1=read from host, 2=write to host */
-#define IE_CLIP_STATUS          0xF238C     /* Status: 0=ready, 1=busy, 2=empty, 3=error */
-#define IE_CLIP_RESULT_LEN      0xF2390     /* Bytes actually read/written */
-#define IE_CLIP_FORMAT          0xF2394     /* Format: 0=text, 1=IFF */
+#define IE_COPROC_BASE              0xF2340
+#define IE_COPROC_CMD               0xF2340     /* Command register (W triggers) */
+#define IE_COPROC_CPU_TYPE          0xF2344     /* Target CPU type */
+#define IE_COPROC_CMD_STATUS        0xF2348     /* Command status: 0=ok, 1=error */
+#define IE_COPROC_CMD_ERROR         0xF234C     /* Error code */
+#define IE_COPROC_TICKET            0xF2350     /* Ticket ID (R/W) */
+#define IE_COPROC_TICKET_STATUS     0xF2354     /* Per-ticket status */
+#define IE_COPROC_OP                0xF2358     /* Operation code */
+#define IE_COPROC_REQ_PTR           0xF235C     /* Request data pointer */
+#define IE_COPROC_REQ_LEN           0xF2360     /* Request data length */
+#define IE_COPROC_RESP_PTR          0xF2364     /* Response buffer pointer */
+#define IE_COPROC_RESP_CAP          0xF2368     /* Response buffer capacity */
+#define IE_COPROC_TIMEOUT           0xF236C     /* Timeout ms */
+#define IE_COPROC_NAME_PTR          0xF2370     /* Service filename pointer */
+#define IE_COPROC_WORKER_STATE      0xF2374     /* Bitmask of running workers (R) */
+#define IE_COPROC_STATS_OPS         0xF2378     /* Total ops dispatched (R) */
+#define IE_COPROC_STATS_BYTES       0xF237C     /* Total bytes processed (R) */
+#define IE_COPROC_IRQ_CTRL          0xF2380     /* IRQ enable (bit 0) */
+#define IE_COPROC_DISPATCH_OVERHEAD 0xF2384     /* Calibrated overhead ns (R) */
+#define IE_COPROC_COMPLETED_TICKET  0xF2388     /* Last completed ticket (R) */
+
+/* Coprocessor commands */
+#define IE_COPROC_CMD_START     1
+#define IE_COPROC_CMD_STOP      2
+#define IE_COPROC_CMD_ENQUEUE   3
+#define IE_COPROC_CMD_POLL      4
+#define IE_COPROC_CMD_WAIT_CMD  5
+
+/* Ticket status codes */
+#define IE_COPROC_ST_PENDING        0
+#define IE_COPROC_ST_RUNNING        1
+#define IE_COPROC_ST_OK             2
+#define IE_COPROC_ST_ERROR          3
+#define IE_COPROC_ST_TIMEOUT        4
+#define IE_COPROC_ST_WORKER_DOWN    5
+
+/* CPU type constants */
+#define IE_EXEC_TYPE_IE32       1
+#define IE_EXEC_TYPE_IE64       2
+#define IE_EXEC_TYPE_6502       3
+#define IE_EXEC_TYPE_M68K       4
+#define IE_EXEC_TYPE_Z80        5
+#define IE_EXEC_TYPE_X86        6
+
+/* ========================================================================
+ * Clipboard Bridge (0xF2390 - 0xF23AF)
+ * ======================================================================== */
+
+#define IE_CLIP_BASE            0xF2390
+#define IE_CLIP_DATA_PTR        0xF2390     /* Guest RAM pointer for data */
+#define IE_CLIP_DATA_LEN        0xF2394     /* Data length in bytes */
+#define IE_CLIP_CTRL            0xF2398     /* Command: 1=read from host, 2=write to host */
+#define IE_CLIP_STATUS          0xF239C     /* Status: 0=ready, 1=busy, 2=empty, 3=error */
+#define IE_CLIP_RESULT_LEN      0xF23A0     /* Bytes actually read/written */
+#define IE_CLIP_FORMAT          0xF23A4     /* Format: 0=text, 1=IFF */
 
 #define IE_CLIP_CMD_READ        1
 #define IE_CLIP_CMD_WRITE       2

@@ -8,6 +8,7 @@
 //#define DEBUG 1
 #include <aros/debug.h>
 #include <diskfont/oterrors.h>
+
 #include <diskfont/glyph.h>
 #include <exec/memory.h>
 #include <clib/alib_protos.h>
@@ -205,7 +206,7 @@ void RenderGlyph(FT_GlyphEngine *ge, int glyph_8bits)
     bitmap.width = F266Ceil(bbox.xMax) - F266Floor(bbox.xMin);
     bitmap.rows  = F266Ceil(bbox.yMax) - F266Floor(bbox.yMin);
 
-    D(bug("BBox %f %f %f %f bitmap %d×%d\n",
+    D(bug("BBox %f %f %f %f bitmap %dï¿½%d\n",
           bbox.xMin/64.0, bbox.yMin/64.0, bbox.xMax/64.0, bbox.yMax/64.0,
           bitmap.width, bitmap.rows));
 

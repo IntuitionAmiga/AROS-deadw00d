@@ -3,7 +3,9 @@
 
     Desc: IE AHI audio driver — slave process.
           The slave process calls the AHI mixer at the system sample rate,
-          then writes the mixed output to IE flex channel DAC registers.
+          then streams the mixed output to IE flex channel DAC registers.
+          Uses IE64 coprocessor (WARP_OP_AUDIO_RESAMPLE) for sample rate
+          conversion when the mixer output rate differs from the DAC rate.
 */
 
 #include <devices/ahi.h>
@@ -16,6 +18,9 @@
 #include <proto/exec.h>
 #include <proto/utility.h>
 
+#include <ie_hwreg.h>
+#include <libraries/iewarp.h>
+
 #define dd ((struct IEAudioData*) AudioCtrl->ahiac_DriverData)
 
 /* IE flex channel DAC registers */
@@ -26,10 +31,11 @@
 #define IE_FLEX_CH0_CTRL  (0xF0A80 + 0x08)
 #define IE_FLEX_CH1_CTRL  (0xF0AC0 + 0x08)
 
-static inline void ie_write32(unsigned long reg, unsigned long val)
-{
-    *(volatile unsigned long *)reg = val;
-}
+/* IE DAC native output rate */
+#define IE_DAC_RATE 44100
+
+/* Coprocessor dispatch threshold (samples) */
+#define RESAMPLE_THRESHOLD 256
 
 #undef SysBase
 
@@ -45,6 +51,102 @@ AROS_UFH3(void, SlaveEntry,
     AROS_USERFUNC_EXIT
 }
 
+/*
+ * Resample stereo int16 buffer from srcRate to dstRate using IE64 coprocessor.
+ * Deinterleaves stereo (L,R,L,R...) into separate L/R mono buffers,
+ * dispatches WARP_OP_AUDIO_RESAMPLE for each channel, then re-interleaves.
+ * Returns the number of output samples, or 0 on failure (caller should fallback).
+ */
+static ULONG IE_ResampleStereo(WORD *src, ULONG srcSamples,
+                                WORD *dst, ULONG dstSamples,
+                                ULONG srcRate, ULONG dstRate)
+{
+    ULONG srcBytes = srcSamples * sizeof(WORD);
+    ULONG dstBytes = dstSamples * sizeof(WORD);
+    WORD *srcL, *srcR, *dstL, *dstR;
+    ULONG i;
+
+    srcL = (WORD *)AllocMem(srcBytes * 2 + dstBytes * 2, MEMF_ANY);
+    if (!srcL)
+        return 0;
+
+    srcR = srcL + srcSamples;
+    dstL = srcR + srcSamples;
+    dstR = dstL + dstSamples;
+
+    /* Deinterleave stereo → mono L/R */
+    for (i = 0; i < srcSamples; i++)
+    {
+        srcL[i] = src[i * 2];
+        srcR[i] = src[i * 2 + 1];
+    }
+
+    /* Dispatch WARP_OP_AUDIO_RESAMPLE for left channel */
+    ie_write32(IE_COPROC_CPU_TYPE, IE_EXEC_TYPE_IE64);
+    ie_write32(IE_COPROC_OP, WARP_OP_AUDIO_RESAMPLE);
+    ie_write32(IE_COPROC_REQ_PTR, (ULONG)srcL);
+    ie_write32(IE_COPROC_REQ_LEN, srcSamples);
+    ie_write32(IE_COPROC_RESP_PTR, (ULONG)dstL);
+    ie_write32(IE_COPROC_RESP_CAP,
+               (srcRate & 0xFFFF) | (dstRate << 16));
+    ie_write32(IE_COPROC_CMD, IE_COPROC_CMD_ENQUEUE);
+
+    if (ie_read32(IE_COPROC_CMD_STATUS) != 0)
+    {
+        FreeMem(srcL, srcBytes * 2 + dstBytes * 2);
+        return 0;
+    }
+
+    {
+        ULONG ticketL = ie_read32(IE_COPROC_TICKET);
+
+        /* Dispatch right channel */
+        ie_write32(IE_COPROC_CPU_TYPE, IE_EXEC_TYPE_IE64);
+        ie_write32(IE_COPROC_OP, WARP_OP_AUDIO_RESAMPLE);
+        ie_write32(IE_COPROC_REQ_PTR, (ULONG)srcR);
+        ie_write32(IE_COPROC_REQ_LEN, srcSamples);
+        ie_write32(IE_COPROC_RESP_PTR, (ULONG)dstR);
+        ie_write32(IE_COPROC_RESP_CAP,
+                   (srcRate & 0xFFFF) | (dstRate << 16));
+        ie_write32(IE_COPROC_CMD, IE_COPROC_CMD_ENQUEUE);
+
+        if (ie_read32(IE_COPROC_CMD_STATUS) != 0)
+        {
+            /* Wait for left channel to finish before freeing */
+            ie_write32(IE_COPROC_TICKET, ticketL);
+            ie_write32(IE_COPROC_TIMEOUT, 1000);
+            ie_write32(IE_COPROC_CMD, IE_COPROC_CMD_WAIT_CMD);
+            FreeMem(srcL, srcBytes * 2 + dstBytes * 2);
+            return 0;
+        }
+
+        {
+            ULONG ticketR = ie_read32(IE_COPROC_TICKET);
+
+            /* Wait for both channels */
+            ie_write32(IE_COPROC_TICKET, ticketR);
+            ie_write32(IE_COPROC_TIMEOUT, 1000);
+            ie_write32(IE_COPROC_CMD, IE_COPROC_CMD_WAIT_CMD);
+
+            if (ie_read32(IE_COPROC_TICKET_STATUS) != IE_COPROC_ST_OK)
+            {
+                FreeMem(srcL, srcBytes * 2 + dstBytes * 2);
+                return 0;
+            }
+        }
+
+        /* Re-interleave mono L/R → stereo */
+        for (i = 0; i < dstSamples; i++)
+        {
+            dst[i * 2]     = dstL[i];
+            dst[i * 2 + 1] = dstR[i];
+        }
+    }
+
+    FreeMem(srcL, srcBytes * 2 + dstBytes * 2);
+    return dstSamples;
+}
+
 static void
 Slave(struct ExecBase *SysBase)
 {
@@ -52,6 +154,8 @@ Slave(struct ExecBase *SysBase)
     struct DriverBase      *AHIsubBase;
     BOOL                    running;
     ULONG                   signals;
+    WORD                   *resampleBuf = NULL;
+    ULONG                   resampleBufSamples = 0;
 
     AudioCtrl  = (struct AHIAudioCtrlDrv *)FindTask(NULL)->tc_UserData;
     AHIsubBase = (struct DriverBase *)dd->ahisubbase;
@@ -59,6 +163,21 @@ Slave(struct ExecBase *SysBase)
     dd->slavesignal = AllocSignal(-1);
 
     if (dd->slavesignal != -1) {
+        ULONG mixRate = AudioCtrl->ahiac_MixFreq;
+        BOOL needsResample = (mixRate != IE_DAC_RATE && mixRate > 0);
+
+        /* Pre-allocate resample buffer if rate conversion needed */
+        if (needsResample && AudioCtrl->ahiac_BuffSamples > 0)
+        {
+            /* Output samples = input samples * dstRate / srcRate + 1 */
+            resampleBufSamples = (ULONG)AudioCtrl->ahiac_BuffSamples *
+                                 IE_DAC_RATE / mixRate + 1;
+            resampleBuf = (WORD *)AllocMem(
+                resampleBufSamples * 2 * sizeof(WORD), MEMF_ANY);
+            if (!resampleBuf)
+                needsResample = FALSE;  /* fallback to direct output */
+        }
+
         /* Enable flex channels for DAC output */
         ie_write32(IE_FLEX_CH0_VOL,  255);
         ie_write32(IE_FLEX_CH0_CTRL, 3);
@@ -79,29 +198,41 @@ Slave(struct ExecBase *SysBase)
             if (signals & (SIGBREAKF_CTRL_C | (1L << dd->slavesignal))) {
                 running = FALSE;
             } else {
-                /* Call AHI player hook (timing) and mixer (sample generation).
-                 * The mixer fills dd->mixbuffer with ahiac_BuffSamples frames.
-                 * We then write the first stereo sample pair to the flex DACs.
-                 *
-                 * This is a simplified output path — it feeds one mixed sample
-                 * per AHI callback rather than streaming the full buffer.
-                 * A production driver would use the audio DMA engine to stream
-                 * the entire mix buffer at the correct rate.
-                 */
                 CallHookPkt(AudioCtrl->ahiac_PlayerFunc, AudioCtrl, NULL);
                 CallHookPkt(AudioCtrl->ahiac_MixerFunc,  AudioCtrl, dd->mixbuffer);
 
-                /* Write first mixed sample to DAC (16-bit signed → 8-bit signed).
-                 * Buffer format depends on ahiac_BuffType:
-                 *   AHIST_S16S: interleaved signed 16-bit stereo (L,R,L,R,...)
-                 *   AHIST_M16S: signed 16-bit mono
-                 */
                 if (dd->mixbuffer && AudioCtrl->ahiac_BuffSamples > 0) {
-                    WORD *buf16 = (WORD *)dd->mixbuffer;
-                    BYTE left  = (BYTE)(buf16[0] >> 8);
-                    BYTE right = (BYTE)(buf16[1] >> 8);
-                    ie_write32(IE_FLEX_CH0_DAC, (ULONG)(UBYTE)left);
-                    ie_write32(IE_FLEX_CH1_DAC, (ULONG)(UBYTE)right);
+                    WORD *outBuf = (WORD *)dd->mixbuffer;
+                    ULONG outSamples = AudioCtrl->ahiac_BuffSamples;
+
+                    /* Resample via IE64 coprocessor if rates differ */
+                    if (needsResample &&
+                        outSamples >= RESAMPLE_THRESHOLD &&
+                        resampleBuf)
+                    {
+                        ULONG resampled = IE_ResampleStereo(
+                            (WORD *)dd->mixbuffer,
+                            AudioCtrl->ahiac_BuffSamples,
+                            resampleBuf, resampleBufSamples,
+                            mixRate, IE_DAC_RATE);
+                        if (resampled > 0)
+                        {
+                            outBuf = resampleBuf;
+                            outSamples = resampled;
+                        }
+                    }
+
+                    /* Stream all samples to DAC (16-bit signed → 8-bit) */
+                    {
+                        ULONG s;
+                        for (s = 0; s < outSamples; s++)
+                        {
+                            BYTE left  = (BYTE)(outBuf[s * 2] >> 8);
+                            BYTE right = (BYTE)(outBuf[s * 2 + 1] >> 8);
+                            ie_write32(IE_FLEX_CH0_DAC, (ULONG)(UBYTE)left);
+                            ie_write32(IE_FLEX_CH1_DAC, (ULONG)(UBYTE)right);
+                        }
+                    }
                 }
             }
         }
@@ -109,6 +240,9 @@ Slave(struct ExecBase *SysBase)
         /* Disable flex channels */
         ie_write32(IE_FLEX_CH0_CTRL, 0);
         ie_write32(IE_FLEX_CH1_CTRL, 0);
+
+        if (resampleBuf)
+            FreeMem(resampleBuf, resampleBufSamples * 2 * sizeof(WORD));
     }
 
     FreeSignal(dd->slavesignal);

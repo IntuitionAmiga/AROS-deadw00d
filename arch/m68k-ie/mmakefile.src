@@ -15,7 +15,8 @@ include $(SRCDIR)/config/aros.cfg
 #MM     hidd-m68k-iegfx \
 #MM     kernel-ie-m68k-handler \
 #MM     kernel-ie-m68k-audio \
-#MM     kernel-ie-m68k-ahidrv
+#MM     kernel-ie-m68k-ahidrv \
+#MM     kernel-iewarp
 
 #MM- software-ie-m68k : general-setup binary-ie-m68k \
 #MM	    workbench-ie-m68k

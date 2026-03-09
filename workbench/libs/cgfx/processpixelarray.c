@@ -13,6 +13,11 @@
 #include "cybergraphics_intern.h"
 #include "processpixelarray_ops.h"
 
+#ifdef __mc68000__
+#include <libraries/iewarp.h>
+#include <ie_hwreg.h>
+#endif
+
 /*****************************************************************************
 
     NAME */
@@ -90,6 +95,42 @@
     opRect.MinY = destY;
     opRect.MaxX = opRect.MinX + sizeX - 1;
     opRect.MaxY = opRect.MinY + sizeY - 1;
+
+#ifdef __mc68000__
+    /* IE64 coprocessor acceleration for large pixel processing operations.
+     * The IE64 worker handles batch pixel operations (brighten, darken, tint,
+     * negative, etc.) via WARP_OP_PIXEL_PROCESS. For small areas, the M68K
+     * fallback below is faster due to dispatch overhead. */
+    if (sizeX * sizeY >= 1024 &&
+        operation != POP_GRADIENT && operation != POP_BLUR)
+    {
+        struct BitMap *bm = rp->BitMap;
+        if (bm && bm->Planes[0])
+        {
+            APTR data = (APTR)((ULONG)bm->Planes[0] +
+                        destY * bm->BytesPerRow + destX * 4);
+            ie_write32(IE_COPROC_CPU_TYPE, IE_EXEC_TYPE_IE64);
+            ie_write32(IE_COPROC_OP, WARP_OP_PIXEL_PROCESS);
+            ie_write32(IE_COPROC_REQ_PTR, (ULONG)data);
+            ie_write32(IE_COPROC_REQ_LEN,
+                       ((ULONG)sizeX) | ((ULONG)sizeY << 16));
+            ie_write32(IE_COPROC_RESP_PTR, (ULONG)operation);
+            ie_write32(IE_COPROC_RESP_CAP,
+                       ((ULONG)bm->BytesPerRow) | ((ULONG)value << 16));
+            ie_write32(IE_COPROC_CMD, IE_COPROC_CMD_ENQUEUE);
+
+            if (ie_read32(IE_COPROC_CMD_STATUS) == 0)
+            {
+                ULONG ticket = ie_read32(IE_COPROC_TICKET);
+                ie_write32(IE_COPROC_TICKET, ticket);
+                ie_write32(IE_COPROC_TIMEOUT, 5000);
+                ie_write32(IE_COPROC_CMD, IE_COPROC_CMD_WAIT_CMD);
+                if (ie_read32(IE_COPROC_TICKET_STATUS) == IE_COPROC_ST_OK)
+                    return;
+            }
+        }
+    }
+#endif
 
     switch (operation)
     {

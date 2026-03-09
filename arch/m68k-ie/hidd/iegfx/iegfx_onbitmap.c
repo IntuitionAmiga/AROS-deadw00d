@@ -4,6 +4,7 @@
     Desc: Bitmap class for IE Gfx HIDD.
           Displayable bitmaps are allocated in VRAM (0x100000+).
           Supports RGBA32 (direct color) and CLUT8 (256-color palette).
+          Hardware-accelerated FillRect, Clear, PutTemplate, PutAlphaTemplate, PutImage, GetImage, DrawLine.
 */
 
 #define __OOP_NOATTRBASES__
@@ -24,10 +25,80 @@
 
 #include <string.h>
 
+#include <ie_hwreg.h>
+#include <libraries/iewarp.h>
+
 #include "iegfx_bitmap.h"
 #include "iegfx_hidd.h"
 
 #include LC_LIBDEFS_FILE
+
+/* Coprocessor warp dispatch threshold (bytes) */
+#define WARP_THRESHOLD 4096
+
+/*
+ * Dispatch a fill or copy operation to the IE64 coprocessor via MMIO.
+ * Returns TRUE if dispatched and completed, FALSE if caller should fallback.
+ */
+static BOOL IE_WarpFillRect(ULONG dst, UWORD w, UWORD h, UWORD stride,
+                            ULONG color, UBYTE bpp)
+{
+    ULONG size = (ULONG)w * (ULONG)h * (ULONG)bpp;
+    if (size < WARP_THRESHOLD)
+        return FALSE;
+
+    ie_write32(IE_COPROC_CPU_TYPE, IE_EXEC_TYPE_IE64);
+    ie_write32(IE_COPROC_OP, WARP_OP_FILL_RECT);
+    ie_write32(IE_COPROC_REQ_PTR, color);
+    ie_write32(IE_COPROC_REQ_LEN, ((ULONG)w * (ULONG)bpp) | ((ULONG)h << 16));
+    ie_write32(IE_COPROC_RESP_PTR, dst);
+    ie_write32(IE_COPROC_RESP_CAP, (ULONG)stride);
+    ie_write32(IE_COPROC_CMD, IE_COPROC_CMD_ENQUEUE);
+
+    if (ie_read32(IE_COPROC_CMD_STATUS) != 0)
+        return FALSE;
+
+    {
+        ULONG ticket = ie_read32(IE_COPROC_TICKET);
+        ie_write32(IE_COPROC_TICKET, ticket);
+        ie_write32(IE_COPROC_TIMEOUT, 5000);
+        ie_write32(IE_COPROC_CMD, IE_COPROC_CMD_WAIT_CMD);
+
+        if (ie_read32(IE_COPROC_TICKET_STATUS) != IE_COPROC_ST_OK)
+            return FALSE;
+    }
+    return TRUE;
+}
+
+static BOOL IE_WarpBlitCopy(ULONG src, ULONG dst, UWORD w, UWORD h,
+                            UWORD src_stride, UWORD dst_stride, UBYTE bpp)
+{
+    ULONG size = (ULONG)w * (ULONG)h * (ULONG)bpp;
+    if (size < WARP_THRESHOLD)
+        return FALSE;
+
+    ie_write32(IE_COPROC_CPU_TYPE, IE_EXEC_TYPE_IE64);
+    ie_write32(IE_COPROC_OP, WARP_OP_BLIT_COPY);
+    ie_write32(IE_COPROC_REQ_PTR, src);
+    ie_write32(IE_COPROC_REQ_LEN, ((ULONG)w * (ULONG)bpp) | ((ULONG)h << 16));
+    ie_write32(IE_COPROC_RESP_PTR, dst);
+    ie_write32(IE_COPROC_RESP_CAP, (ULONG)src_stride | ((ULONG)dst_stride << 16));
+    ie_write32(IE_COPROC_CMD, IE_COPROC_CMD_ENQUEUE);
+
+    if (ie_read32(IE_COPROC_CMD_STATUS) != 0)
+        return FALSE;
+
+    {
+        ULONG ticket = ie_read32(IE_COPROC_TICKET);
+        ie_write32(IE_COPROC_TICKET, ticket);
+        ie_write32(IE_COPROC_TIMEOUT, 5000);
+        ie_write32(IE_COPROC_CMD, IE_COPROC_CMD_WAIT_CMD);
+
+        if (ie_read32(IE_COPROC_TICKET_STATUS) != IE_COPROC_ST_OK)
+            return FALSE;
+    }
+    return TRUE;
+}
 
 /*********** BitMap::New() *************************************/
 
@@ -115,8 +186,37 @@ OOP_Object *METHOD(IEBitMap, Root, New)
             return NULL;
         }
 
-        /* Clear the framebuffer */
-        memset(data->VideoData, 0, data->bytesperline * data->height);
+        /* Clear the framebuffer — use IE64 MEMSET for large bitmaps */
+        {
+            ULONG clearSize = data->bytesperline * data->height;
+
+            if (clearSize >= WARP_THRESHOLD)
+            {
+                ie_write32(IE_COPROC_CPU_TYPE, IE_EXEC_TYPE_IE64);
+                ie_write32(IE_COPROC_OP, WARP_OP_MEMSET);
+                ie_write32(IE_COPROC_REQ_PTR, 0);
+                ie_write32(IE_COPROC_REQ_LEN, clearSize);
+                ie_write32(IE_COPROC_RESP_PTR, (ULONG)data->VideoData);
+                ie_write32(IE_COPROC_RESP_CAP, clearSize);
+                ie_write32(IE_COPROC_CMD, IE_COPROC_CMD_ENQUEUE);
+
+                if (ie_read32(IE_COPROC_CMD_STATUS) == 0)
+                {
+                    ULONG ticket = ie_read32(IE_COPROC_TICKET);
+                    ie_write32(IE_COPROC_TICKET, ticket);
+                    ie_write32(IE_COPROC_TIMEOUT, 5000);
+                    ie_write32(IE_COPROC_CMD, IE_COPROC_CMD_WAIT_CMD);
+                }
+                else
+                {
+                    memset(data->VideoData, 0, clearSize);
+                }
+            }
+            else
+            {
+                memset(data->VideoData, 0, clearSize);
+            }
+        }
 
         /* Tell ChunkyBM superclass where to draw */
         attrs[0].ti_Data = (IPTR)data->VideoData;
@@ -221,4 +321,477 @@ BOOL METHOD(IEBitMap, Hidd_BitMap, SetColors)
     }
 
     return TRUE;
+}
+
+/*********** BitMap::FillRect() ********************************/
+
+VOID METHOD(IEBitMap, Hidd_BitMap, FillRect)
+{
+    struct IEGfxBitmapData *data = OOP_INST_DATA(cl, o);
+    ULONG mode = GC_DRMD(msg->gc);
+    HIDDT_Pixel fg = GC_FG(msg->gc);
+
+    D(bug("[IEBitMap] FillRect(%d,%d - %d,%d, mode=%d, fg=0x%08lx)\n",
+          msg->minX, msg->minY, msg->maxX, msg->maxY, mode, fg));
+
+    /* COLMASK guard: partial masks need per-pixel read-modify-write */
+    if (GC_COLMASK(msg->gc) != (HIDDT_Pixel)~0)
+    {
+        OOP_DoSuperMethod(cl, o, (OOP_Msg)msg);
+        return;
+    }
+
+    {
+        UWORD w = msg->maxX - msg->minX + 1;
+        UWORD h = msg->maxY - msg->minY + 1;
+        ULONG dst = (ULONG)data->VideoData +
+                    msg->minY * data->bytesperline +
+                    msg->minX * data->bytesperpix;
+
+        /* Try coprocessor for large Copy-mode fills */
+        if (mode == vHidd_GC_DrawMode_Copy &&
+            IE_WarpFillRect(dst, w, h, data->bytesperline,
+                            fg, data->bytesperpix))
+            return;
+
+        {
+            ULONG bpp_flag = (data->bytesperpix == 1) ?
+                IE_BLT_FLAGS_BPP_CLUT8 : IE_BLT_FLAGS_BPP_RGBA32;
+            ULONG flags = IE_BLT_MAKE_FLAGS(bpp_flag, mode);
+
+            IE_BlitFillEx(dst, w, h, data->bytesperline, fg, flags);
+        }
+    }
+}
+
+/*********** BitMap::Clear() ***********************************/
+
+VOID METHOD(IEBitMap, Hidd_BitMap, Clear)
+{
+    struct IEGfxBitmapData *data = OOP_INST_DATA(cl, o);
+    HIDDT_Pixel bg = GC_BG(msg->gc);
+
+    D(bug("[IEBitMap] Clear(bg=0x%08lx)\n", bg));
+
+    {
+        ULONG dst = (ULONG)data->VideoData;
+
+        /* Full bitmap clear — always qualifies for coprocessor */
+        if (IE_WarpFillRect(dst, data->width, data->height,
+                            data->bytesperline, bg, data->bytesperpix))
+            return;
+
+        {
+            ULONG bpp_flag = (data->bytesperpix == 1) ?
+                IE_BLT_FLAGS_BPP_CLUT8 : IE_BLT_FLAGS_BPP_RGBA32;
+            ULONG flags = IE_BLT_MAKE_FLAGS(bpp_flag, vHidd_GC_DrawMode_Copy);
+
+            IE_BlitFillEx(dst, data->width, data->height,
+                          data->bytesperline, bg, flags);
+        }
+    }
+}
+
+/*********** BitMap::PutTemplate() *****************************/
+
+VOID METHOD(IEBitMap, Hidd_BitMap, PutTemplate)
+{
+    struct IEGfxBitmapData *data = OOP_INST_DATA(cl, o);
+    ULONG mode = GC_DRMD(msg->gc);
+
+    D(bug("[IEBitMap] PutTemplate(%d,%d %dx%d, mode=%d)\n",
+          msg->x, msg->y, msg->width, msg->height, mode));
+
+    /* Only handle Copy and Invert draw modes; others fall to superclass */
+    if (mode != vHidd_GC_DrawMode_Copy && mode != vHidd_GC_DrawMode_Invert)
+    {
+        OOP_DoSuperMethod(cl, o, (OOP_Msg)msg);
+        return;
+    }
+
+    {
+        ULONG bpp_flag = (data->bytesperpix == 1) ?
+            IE_BLT_FLAGS_BPP_CLUT8 : IE_BLT_FLAGS_BPP_RGBA32;
+        ULONG flags = IE_BLT_MAKE_FLAGS(bpp_flag, vHidd_GC_DrawMode_Copy);
+
+        if (mode == vHidd_GC_DrawMode_Invert)
+        {
+            /* Invert mode: FG/BG ignored, XOR destination where template bit=1 */
+            flags |= IE_BLT_FLAGS_INVERT_MODE;
+        }
+        else
+        {
+            /* Copy mode: check color expansion type */
+            if (GC_COLEXP(msg->gc) == vHidd_GC_ColExp_Transparent)
+                flags |= IE_BLT_FLAGS_JAM1;
+            /* else JAM2 (opaque): bit cleared = write BG */
+        }
+
+        if (msg->inverttemplate)
+            flags |= IE_BLT_FLAGS_INVERT_TMPL;
+
+        ULONG fg = GC_FG(msg->gc);
+        ULONG bg = GC_BG(msg->gc);
+        ULONG mask = (ULONG)msg->masktemplate;
+        ULONG dst = (ULONG)data->VideoData +
+                    msg->y * data->bytesperline +
+                    msg->x * data->bytesperpix;
+
+        IE_BlitColorExpand(mask, dst, msg->width, msg->height,
+                           msg->modulo, msg->srcx, data->bytesperline,
+                           fg, bg, flags);
+    }
+}
+
+/*********** BitMap::PutAlphaTemplate() ************************/
+
+VOID METHOD(IEBitMap, Hidd_BitMap, PutAlphaTemplate)
+{
+    struct IEGfxBitmapData *data = OOP_INST_DATA(cl, o);
+
+    D(bug("[IEBitMap] PutAlphaTemplate(%d,%d %dx%d)\n",
+          msg->x, msg->y, msg->width, msg->height));
+
+    /* Only accelerate RGBA32 bitmaps */
+    if (data->bytesperpix != 4)
+    {
+        OOP_DoSuperMethod(cl, o, (OOP_Msg)msg);
+        return;
+    }
+
+    {
+        ULONG size = (ULONG)msg->width * (ULONG)msg->height;
+        ULONG fg = GC_FG(msg->gc);
+        ULONG dst = (ULONG)data->VideoData +
+                    msg->y * data->bytesperline +
+                    msg->x * data->bytesperpix;
+
+        /* Try IE64 coprocessor for large alpha blits */
+        if (size >= WARP_THRESHOLD)
+        {
+            ie_write32(IE_COPROC_CPU_TYPE, IE_EXEC_TYPE_IE64);
+            ie_write32(IE_COPROC_OP, WARP_OP_BLIT_ALPHA);
+            ie_write32(IE_COPROC_REQ_PTR, (ULONG)msg->alpha);
+            ie_write32(IE_COPROC_REQ_LEN,
+                       (ULONG)msg->width | ((ULONG)msg->height << 16));
+            ie_write32(IE_COPROC_RESP_PTR, dst);
+            ie_write32(IE_COPROC_RESP_CAP,
+                       (ULONG)msg->modulo |
+                       ((ULONG)data->bytesperline << 16));
+            ie_write32(IE_COPROC_TIMEOUT, fg);  /* FG color in r29 (flags) */
+            ie_write32(IE_COPROC_CMD, IE_COPROC_CMD_ENQUEUE);
+
+            if (ie_read32(IE_COPROC_CMD_STATUS) == 0)
+            {
+                ULONG ticket = ie_read32(IE_COPROC_TICKET);
+                ie_write32(IE_COPROC_TICKET, ticket);
+                ie_write32(IE_COPROC_TIMEOUT, 5000);
+                ie_write32(IE_COPROC_CMD, IE_COPROC_CMD_WAIT_CMD);
+
+                if (ie_read32(IE_COPROC_TICKET_STATUS) == IE_COPROC_ST_OK)
+                    return;
+            }
+            /* Dispatch failed — fall through to superclass */
+        }
+    }
+
+    OOP_DoSuperMethod(cl, o, (OOP_Msg)msg);
+}
+
+/*********** BitMap::PutImage() ********************************/
+
+VOID METHOD(IEBitMap, Hidd_BitMap, PutImage)
+{
+    struct IEGfxBitmapData *data = OOP_INST_DATA(cl, o);
+    ULONG mode = GC_DRMD(msg->gc);
+
+    D(bug("[IEBitMap] PutImage(%d,%d %dx%d, fmt=%d, mode=%d)\n",
+          msg->x, msg->y, msg->width, msg->height, msg->pixFmt, mode));
+
+    /* Only accelerate Copy mode with full color mask */
+    if (mode != vHidd_GC_DrawMode_Copy || GC_COLMASK(msg->gc) != (HIDDT_Pixel)~0)
+    {
+        OOP_DoSuperMethod(cl, o, (OOP_Msg)msg);
+        return;
+    }
+
+    /* Only accelerate Native format (src pixels match bitmap BPP) */
+    if (msg->pixFmt == vHidd_StdPixFmt_Native)
+    {
+        ULONG src = (ULONG)msg->pixels;
+        ULONG dst = (ULONG)data->VideoData +
+                    msg->y * data->bytesperline +
+                    msg->x * data->bytesperpix;
+
+        /* Try coprocessor for large images */
+        if (IE_WarpBlitCopy(src, dst, msg->width, msg->height,
+                            msg->modulo, data->bytesperline,
+                            data->bytesperpix))
+            return;
+
+        {
+            ULONG bpp_flag = (data->bytesperpix == 1) ?
+                IE_BLT_FLAGS_BPP_CLUT8 : IE_BLT_FLAGS_BPP_RGBA32;
+            ULONG flags = IE_BLT_MAKE_FLAGS(bpp_flag, vHidd_GC_DrawMode_Copy);
+
+            IE_BlitCopyEx(src, dst, msg->width, msg->height,
+                          msg->modulo, data->bytesperline, flags);
+        }
+        return;
+    }
+
+    /* Native32 is always 4 bpp — only fast-path when bitmap is also RGBA32 */
+    if (msg->pixFmt == vHidd_StdPixFmt_Native32 && data->bytesperpix == 4)
+    {
+        ULONG src = (ULONG)msg->pixels;
+        ULONG dst = (ULONG)data->VideoData +
+                    msg->y * data->bytesperline +
+                    msg->x * data->bytesperpix;
+
+        /* Try coprocessor for large images */
+        if (IE_WarpBlitCopy(src, dst, msg->width, msg->height,
+                            msg->modulo, data->bytesperline, 4))
+            return;
+
+        {
+            ULONG flags = IE_BLT_MAKE_FLAGS(IE_BLT_FLAGS_BPP_RGBA32,
+                                             vHidd_GC_DrawMode_Copy);
+
+            IE_BlitCopyEx(src, dst, msg->width, msg->height,
+                          msg->modulo, data->bytesperline, flags);
+        }
+        return;
+    }
+
+    /* Try IE64 format conversion for known 32-bit and 24-bit formats → RGBA32 */
+    if (data->bytesperpix == 4)
+    {
+        ULONG warpSrcFmt = 0;
+
+        switch (msg->pixFmt)
+        {
+        case vHidd_StdPixFmt_ARGB32: warpSrcFmt = WARP_PIXFMT_ARGB32; break;
+        case vHidd_StdPixFmt_BGRA32: warpSrcFmt = WARP_PIXFMT_BGRA32; break;
+        case vHidd_StdPixFmt_ABGR32: warpSrcFmt = WARP_PIXFMT_ABGR32; break;
+        case vHidd_StdPixFmt_RGB24:  warpSrcFmt = WARP_PIXFMT_RGB24;  break;
+        case vHidd_StdPixFmt_BGR24:  warpSrcFmt = WARP_PIXFMT_BGR24;  break;
+        default: break;
+        }
+
+        if (warpSrcFmt)
+        {
+            ULONG size = (ULONG)msg->width * (ULONG)msg->height;
+
+            if (size >= WARP_THRESHOLD)
+            {
+                ULONG dst = (ULONG)data->VideoData +
+                            msg->y * data->bytesperline +
+                            msg->x * data->bytesperpix;
+
+                ie_write32(IE_COPROC_CPU_TYPE, IE_EXEC_TYPE_IE64);
+                ie_write32(IE_COPROC_OP, WARP_OP_BLIT_CONVERT);
+                ie_write32(IE_COPROC_REQ_PTR, (ULONG)msg->pixels);
+                ie_write32(IE_COPROC_REQ_LEN,
+                           (ULONG)msg->width | ((ULONG)msg->height << 16));
+                ie_write32(IE_COPROC_RESP_PTR, dst);
+                ie_write32(IE_COPROC_RESP_CAP,
+                           warpSrcFmt | (WARP_PIXFMT_RGBA32 << 16));
+                ie_write32(IE_COPROC_CMD, IE_COPROC_CMD_ENQUEUE);
+
+                if (ie_read32(IE_COPROC_CMD_STATUS) == 0)
+                {
+                    ULONG ticket = ie_read32(IE_COPROC_TICKET);
+                    ie_write32(IE_COPROC_TICKET, ticket);
+                    ie_write32(IE_COPROC_TIMEOUT, 5000);
+                    ie_write32(IE_COPROC_CMD, IE_COPROC_CMD_WAIT_CMD);
+
+                    if (ie_read32(IE_COPROC_TICKET_STATUS) == IE_COPROC_ST_OK)
+                        return;
+                }
+                /* Dispatch failed — fall through to superclass */
+            }
+        }
+    }
+
+    /* Other pixel formats: fall back to superclass for conversion */
+    OOP_DoSuperMethod(cl, o, (OOP_Msg)msg);
+}
+
+/*********** BitMap::DrawLine() *******************************/
+
+/*
+ * Cohen-Sutherland line clipping.
+ * Clips line (x0,y0)-(x1,y1) to the rectangle (cx1,cy1)-(cx2,cy2).
+ * Returns TRUE if the clipped line is visible, FALSE if fully rejected.
+ */
+#define CS_INSIDE 0
+#define CS_LEFT   1
+#define CS_RIGHT  2
+#define CS_BOTTOM 4
+#define CS_TOP    8
+
+static inline int cs_outcode(WORD x, WORD y, WORD cx1, WORD cy1, WORD cx2, WORD cy2)
+{
+    int code = CS_INSIDE;
+    if (x < cx1) code |= CS_LEFT;
+    else if (x > cx2) code |= CS_RIGHT;
+    if (y < cy1) code |= CS_TOP;
+    else if (y > cy2) code |= CS_BOTTOM;
+    return code;
+}
+
+static BOOL cs_clip_line(WORD *px0, WORD *py0, WORD *px1, WORD *py1,
+                         WORD cx1, WORD cy1, WORD cx2, WORD cy2)
+{
+    WORD x0 = *px0, y0 = *py0, x1 = *px1, y1 = *py1;
+    int oc0 = cs_outcode(x0, y0, cx1, cy1, cx2, cy2);
+    int oc1 = cs_outcode(x1, y1, cx1, cy1, cx2, cy2);
+
+    for (;;)
+    {
+        if (!(oc0 | oc1))
+        {
+            /* Both inside */
+            *px0 = x0; *py0 = y0;
+            *px1 = x1; *py1 = y1;
+            return TRUE;
+        }
+        if (oc0 & oc1)
+        {
+            /* Both outside same edge — fully rejected */
+            return FALSE;
+        }
+
+        /* Pick the endpoint that is outside */
+        {
+            int oc = oc0 ? oc0 : oc1;
+            WORD x, y;
+            LONG dx = (LONG)x1 - (LONG)x0;
+            LONG dy = (LONG)y1 - (LONG)y0;
+
+            if (oc & CS_BOTTOM)
+            {
+                x = x0 + (WORD)(dx * (cy2 - y0) / dy);
+                y = cy2;
+            }
+            else if (oc & CS_TOP)
+            {
+                x = x0 + (WORD)(dx * (cy1 - y0) / dy);
+                y = cy1;
+            }
+            else if (oc & CS_RIGHT)
+            {
+                y = y0 + (WORD)(dy * (cx2 - x0) / dx);
+                x = cx2;
+            }
+            else /* CS_LEFT */
+            {
+                y = y0 + (WORD)(dy * (cx1 - x0) / dx);
+                x = cx1;
+            }
+
+            if (oc == oc0)
+            {
+                x0 = x; y0 = y;
+                oc0 = cs_outcode(x0, y0, cx1, cy1, cx2, cy2);
+            }
+            else
+            {
+                x1 = x; y1 = y;
+                oc1 = cs_outcode(x1, y1, cx1, cy1, cx2, cy2);
+            }
+        }
+    }
+}
+
+VOID METHOD(IEBitMap, Hidd_BitMap, DrawLine)
+{
+    struct IEGfxBitmapData *data = OOP_INST_DATA(cl, o);
+    ULONG mode = GC_DRMD(msg->gc);
+
+    D(bug("[IEBitMap] DrawLine(%d,%d - %d,%d, mode=%d)\n",
+          msg->x1, msg->y1, msg->x2, msg->y2, mode));
+
+    /* COLMASK guard: partial masks need per-pixel read-modify-write */
+    if (GC_COLMASK(msg->gc) != (HIDDT_Pixel)~0)
+    {
+        OOP_DoSuperMethod(cl, o, (OOP_Msg)msg);
+        return;
+    }
+
+    /* Line pattern guard: dashed/dotted lines stay in software */
+    if (GC_LINEPAT(msg->gc) != (UWORD)~0)
+    {
+        OOP_DoSuperMethod(cl, o, (OOP_Msg)msg);
+        return;
+    }
+
+    /* Only accelerate RGBA32 — CLUT8 lines remain in software */
+    if (data->bytesperpix != 4)
+    {
+        OOP_DoSuperMethod(cl, o, (OOP_Msg)msg);
+        return;
+    }
+
+    {
+        ULONG dst = (ULONG)data->VideoData;
+        HIDDT_Pixel fg = GC_FG(msg->gc);
+        ULONG flags = IE_BLT_MAKE_FLAGS(IE_BLT_FLAGS_BPP_RGBA32, mode);
+        WORD x0 = msg->x1, y0 = msg->y1;
+        WORD x1 = msg->x2, y1 = msg->y2;
+
+        /* Clip line to GC clip rectangle if clipping is enabled */
+        if (GC_DOCLIP(msg->gc))
+        {
+            if (!cs_clip_line(&x0, &y0, &x1, &y1,
+                              GC_CLIPX1(msg->gc), GC_CLIPY1(msg->gc),
+                              GC_CLIPX2(msg->gc), GC_CLIPY2(msg->gc)))
+                return; /* Line fully outside clip rect */
+        }
+
+        IE_BlitLineEx(dst, data->bytesperline, x0, y0, x1, y1, fg, flags);
+    }
+}
+
+/*********** BitMap::GetImage() ********************************/
+
+VOID METHOD(IEBitMap, Hidd_BitMap, GetImage)
+{
+    struct IEGfxBitmapData *data = OOP_INST_DATA(cl, o);
+
+    D(bug("[IEBitMap] GetImage(%d,%d %dx%d, fmt=%d)\n",
+          msg->x, msg->y, msg->width, msg->height, msg->pixFmt));
+
+    /* Only accelerate Native format */
+    if (msg->pixFmt == vHidd_StdPixFmt_Native)
+    {
+        ULONG src = (ULONG)data->VideoData +
+                    msg->y * data->bytesperline +
+                    msg->x * data->bytesperpix;
+        ULONG dst = (ULONG)msg->pixels;
+        ULONG bpp_flag = (data->bytesperpix == 1) ?
+            IE_BLT_FLAGS_BPP_CLUT8 : IE_BLT_FLAGS_BPP_RGBA32;
+        ULONG flags = IE_BLT_MAKE_FLAGS(bpp_flag, vHidd_GC_DrawMode_Copy);
+
+        IE_BlitCopyEx(src, dst, msg->width, msg->height,
+                      data->bytesperline, msg->modulo, flags);
+        return;
+    }
+
+    /* Native32 — only fast-path when bitmap is RGBA32 */
+    if (msg->pixFmt == vHidd_StdPixFmt_Native32 && data->bytesperpix == 4)
+    {
+        ULONG src = (ULONG)data->VideoData +
+                    msg->y * data->bytesperline +
+                    msg->x * data->bytesperpix;
+        ULONG dst = (ULONG)msg->pixels;
+        ULONG flags = IE_BLT_MAKE_FLAGS(IE_BLT_FLAGS_BPP_RGBA32,
+                                         vHidd_GC_DrawMode_Copy);
+
+        IE_BlitCopyEx(src, dst, msg->width, msg->height,
+                      data->bytesperline, msg->modulo, flags);
+        return;
+    }
+
+    OOP_DoSuperMethod(cl, o, (OOP_Msg)msg);
 }

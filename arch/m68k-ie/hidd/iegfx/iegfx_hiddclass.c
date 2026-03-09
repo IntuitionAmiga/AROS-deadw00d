@@ -24,9 +24,15 @@
 #include <clib/alib_protos.h>
 #include <string.h>
 
+#include <ie_hwreg.h>
+#include <libraries/iewarp.h>
+
 #include "iegfx_hidd.h"
 #include "iegfx_bitmap.h"
 #include "iegfx_hw.h"
+
+/* Coprocessor warp dispatch threshold (bytes) */
+#define WARP_THRESHOLD 4096
 
 #define MAKE_SYNC(name,clock,hdisp,hstart,hend,htotal,vdisp,vstart,vend,vtotal,flags,descr)   \
     struct TagItem sync_ ## name[]={            \
@@ -256,22 +262,21 @@ void METHOD(IEGfx, Hidd_Gfx, CopyBox)
 {
     ULONG mode = GC_DRMD(msg->gc);
 
-    D(bug("[IEGfx] CopyBox(%p->%p, sx:%d,sy:%d, dx:%d,dy:%d, %dx%d)\n",
+    D(bug("[IEGfx] CopyBox(%p->%p, sx:%d,sy:%d, dx:%d,dy:%d, %dx%d, mode=%d)\n",
           msg->src, msg->dest,
           msg->srcX, msg->srcY, msg->destX, msg->destY,
-          msg->width, msg->height));
+          msg->width, msg->height, mode));
 
     if (OOP_OCLASS(msg->src) != XSD(cl)->bmclass ||
         OOP_OCLASS(msg->dest) != XSD(cl)->bmclass)
     {
-        /* One or both bitmaps are not IE bitmaps — use software fallback */
         OOP_DoSuperMethod(cl, o, (OOP_Msg)msg);
         return;
     }
 
-    if (mode != vHidd_GC_DrawMode_Copy)
+    /* COLMASK guard: partial masks require per-pixel read-modify-write */
+    if (GC_COLMASK(msg->gc) != (HIDDT_Pixel)~0)
     {
-        /* Non-copy draw modes use software path */
         OOP_DoSuperMethod(cl, o, (OOP_Msg)msg);
         return;
     }
@@ -280,8 +285,8 @@ void METHOD(IEGfx, Hidd_Gfx, CopyBox)
         struct IEGfxBitmapData *bm_src = OOP_INST_DATA(OOP_OCLASS(msg->src), msg->src);
         struct IEGfxBitmapData *bm_dst = OOP_INST_DATA(OOP_OCLASS(msg->dest), msg->dest);
 
-        /* HW blitter only supports RGBA32 — CLUT8 bitmaps use software path */
-        if (bm_src->bytesperpix != 4 || bm_dst->bytesperpix != 4)
+        /* Both bitmaps must have matching BPP */
+        if (bm_src->bytesperpix != bm_dst->bytesperpix)
         {
             OOP_DoSuperMethod(cl, o, (OOP_Msg)msg);
             return;
@@ -294,10 +299,151 @@ void METHOD(IEGfx, Hidd_Gfx, CopyBox)
                            msg->destY * bm_dst->bytesperline +
                            msg->destX * bm_dst->bytesperpix;
 
-        IE_BlitCopy(src_offset, dst_offset,
-                    msg->width, msg->height,
-                    bm_src->bytesperline, bm_dst->bytesperline);
+        /* Try coprocessor for large Copy-mode blits */
+        if (mode == vHidd_GC_DrawMode_Copy)
+        {
+            ULONG size = (ULONG)msg->width * (ULONG)msg->height *
+                         (ULONG)bm_src->bytesperpix;
+            if (size >= WARP_THRESHOLD)
+            {
+                ULONG widthBytes = (ULONG)msg->width * (ULONG)bm_src->bytesperpix;
+
+                ie_write32(IE_COPROC_CPU_TYPE, IE_EXEC_TYPE_IE64);
+                ie_write32(IE_COPROC_OP, WARP_OP_BLIT_COPY);
+                ie_write32(IE_COPROC_REQ_PTR, src_offset);
+                ie_write32(IE_COPROC_REQ_LEN,
+                           widthBytes | ((ULONG)msg->height << 16));
+                ie_write32(IE_COPROC_RESP_PTR, dst_offset);
+                ie_write32(IE_COPROC_RESP_CAP,
+                           (ULONG)bm_src->bytesperline |
+                           ((ULONG)bm_dst->bytesperline << 16));
+                ie_write32(IE_COPROC_CMD, IE_COPROC_CMD_ENQUEUE);
+
+                if (ie_read32(IE_COPROC_CMD_STATUS) == 0)
+                {
+                    ULONG ticket = ie_read32(IE_COPROC_TICKET);
+                    ie_write32(IE_COPROC_TICKET, ticket);
+                    ie_write32(IE_COPROC_TIMEOUT, 5000);
+                    ie_write32(IE_COPROC_CMD, IE_COPROC_CMD_WAIT_CMD);
+
+                    if (ie_read32(IE_COPROC_TICKET_STATUS) == IE_COPROC_ST_OK)
+                        return;
+                }
+                /* Enqueue or completion failed — fall through to blitter */
+            }
+        }
+
+        {
+            ULONG bpp_flag = (bm_src->bytesperpix == 1) ?
+                IE_BLT_FLAGS_BPP_CLUT8 : IE_BLT_FLAGS_BPP_RGBA32;
+            ULONG flags = IE_BLT_MAKE_FLAGS(bpp_flag, mode);
+
+            IE_BlitCopyEx(src_offset, dst_offset,
+                          msg->width, msg->height,
+                          bm_src->bytesperline, bm_dst->bytesperline,
+                          flags);
+        }
     }
+}
+
+/*********** GfxHidd::CopyBoxMasked() *************************/
+
+BOOL METHOD(IEGfx, Hidd_Gfx, CopyBoxMasked)
+{
+    D(bug("[IEGfx] CopyBoxMasked(%p->%p, sx:%d,sy:%d, dx:%d,dy:%d, %dx%d)\n",
+          msg->src, msg->dest,
+          msg->srcX, msg->srcY, msg->destX, msg->destY,
+          msg->width, msg->height));
+
+    /* Only accelerate when both bitmaps are our class */
+    if (OOP_OCLASS(msg->src) != XSD(cl)->bmclass ||
+        OOP_OCLASS(msg->dest) != XSD(cl)->bmclass)
+    {
+        return (BOOL)OOP_DoSuperMethod(cl, o, (OOP_Msg)msg);
+    }
+
+    {
+        struct IEGfxBitmapData *bm_src = OOP_INST_DATA(OOP_OCLASS(msg->src), msg->src);
+        struct IEGfxBitmapData *bm_dst = OOP_INST_DATA(OOP_OCLASS(msg->dest), msg->dest);
+
+        /* Both RGBA32, mask present, large enough for coprocessor */
+        if (bm_src->bytesperpix == 4 && bm_dst->bytesperpix == 4 &&
+            msg->mask != NULL)
+        {
+            ULONG size = (ULONG)msg->width * (ULONG)msg->height * 4;
+
+            if (size >= WARP_THRESHOLD)
+            {
+                /*
+                 * Expand 1-bit PLANEPTR mask to 8-bit byte mask.
+                 * AROS mask: 1 bit per pixel, MSB first, word-aligned rows.
+                 * Worker expects: 1 byte per pixel (0x00 or 0xFF).
+                 */
+                ULONG maskBytes = (ULONG)msg->width * (ULONG)msg->height;
+                UBYTE *byteMask = AllocMem(maskBytes, MEMF_ANY);
+
+                if (byteMask)
+                {
+                    UWORD maskStride = ((msg->width + 15) >> 4) << 1;
+                    UBYTE *mp = (UBYTE *)msg->mask;
+                    UBYTE *bp = byteMask;
+                    UWORD row, col;
+
+                    for (row = 0; row < msg->height; row++)
+                    {
+                        UBYTE *rowMask = mp + row * maskStride;
+                        for (col = 0; col < msg->width; col++)
+                        {
+                            *bp++ = (rowMask[col >> 3] & (0x80 >> (col & 7)))
+                                    ? 0xFF : 0x00;
+                        }
+                    }
+
+                    {
+                        ULONG src_off = (ULONG)bm_src->VideoData +
+                                        msg->srcY * bm_src->bytesperline +
+                                        msg->srcX * bm_src->bytesperpix;
+                        ULONG dst_off = (ULONG)bm_dst->VideoData +
+                                        msg->destY * bm_dst->bytesperline +
+                                        msg->destX * bm_dst->bytesperpix;
+
+                        ie_write32(IE_COPROC_CPU_TYPE, IE_EXEC_TYPE_IE64);
+                        ie_write32(IE_COPROC_OP, WARP_OP_BLIT_MASK);
+                        ie_write32(IE_COPROC_REQ_PTR, src_off);
+                        ie_write32(IE_COPROC_REQ_LEN,
+                                   ((ULONG)msg->width * 4) |
+                                   ((ULONG)msg->height << 16));
+                        ie_write32(IE_COPROC_RESP_PTR, dst_off);
+                        ie_write32(IE_COPROC_RESP_CAP,
+                                   (ULONG)bm_src->bytesperline |
+                                   ((ULONG)bm_dst->bytesperline << 16));
+                        ie_write32(IE_COPROC_TIMEOUT, (ULONG)byteMask);
+                        ie_write32(IE_COPROC_CMD, IE_COPROC_CMD_ENQUEUE);
+
+                        if (ie_read32(IE_COPROC_CMD_STATUS) == 0)
+                        {
+                            ULONG ticket = ie_read32(IE_COPROC_TICKET);
+                            ie_write32(IE_COPROC_TICKET, ticket);
+                            ie_write32(IE_COPROC_TIMEOUT, 5000);
+                            ie_write32(IE_COPROC_CMD, IE_COPROC_CMD_WAIT_CMD);
+
+                            if (ie_read32(IE_COPROC_TICKET_STATUS) ==
+                                IE_COPROC_ST_OK)
+                            {
+                                FreeMem(byteMask, maskBytes);
+                                return TRUE;
+                            }
+                        }
+                    }
+
+                    FreeMem(byteMask, maskBytes);
+                }
+                /* Allocation or dispatch failed — fall through */
+            }
+        }
+    }
+
+    return (BOOL)OOP_DoSuperMethod(cl, o, (OOP_Msg)msg);
 }
 
 /*********** GfxHidd::Show() *********************************/

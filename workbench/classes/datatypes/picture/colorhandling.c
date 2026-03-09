@@ -28,6 +28,7 @@
 #include "pictureclass.h"
 #include "colorhandling.h"
 
+
 static void ScaleLineSimple( UBYTE *srcxptr, UBYTE *destxptr, ULONG destwidth, UWORD srcpixelbytes, ULONG xscale );
 static BOOL ScaleArraySimple( struct Picture_Data *pd, struct RastPort rp );
 static UBYTE * AllocLineBuffer( long width, long height, int pixelbytes );
@@ -801,6 +802,7 @@ static BOOL RemapTC2CM( struct Picture_Data *pd )
                 {
                     thissrc = srcbuf;
                     thisdest = srcline;
+                    {
                     x = srcwidth;
                     while( x-- )
                     {
@@ -813,6 +815,7 @@ static BOOL RemapTC2CM( struct Picture_Data *pd )
                             thissrc++;
 
                         *thisdest++ = sparsetable[index];
+                    }
                     }
                     if( scale )
                         ScaleLineSimple( srcline, destline, destwidth, 1, pd->XScale );

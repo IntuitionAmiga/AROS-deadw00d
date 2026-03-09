@@ -75,6 +75,7 @@ void IE_BlitCopy(ULONG src, ULONG dst, UWORD width, UWORD height,
     ie_write32(IE_BLT_HEIGHT, (ULONG)height);
     ie_write32(IE_BLT_SRC_STRIDE, (ULONG)src_stride);
     ie_write32(IE_BLT_DST_STRIDE, (ULONG)dst_stride);
+    ie_write32(IE_BLT_FLAGS, 0);
     ie_write32(IE_BLT_CTRL, IE_BLT_CTRL_START);
 
     /* IE blitter is synchronous — completes immediately after start */
@@ -92,6 +93,7 @@ void IE_BlitFill(ULONG dst, UWORD width, UWORD height,
     ie_write32(IE_BLT_HEIGHT, (ULONG)height);
     ie_write32(IE_BLT_DST_STRIDE, (ULONG)dst_stride);
     ie_write32(IE_BLT_COLOR, color);
+    ie_write32(IE_BLT_FLAGS, 0);
     ie_write32(IE_BLT_CTRL, IE_BLT_CTRL_START);
 }
 
@@ -99,4 +101,79 @@ void IE_BlitWait(void)
 {
     /* IE blitter is synchronous — no wait needed */
     /* Left as a placeholder for future async blitter support */
+}
+
+void IE_BlitFillEx(ULONG dst, UWORD w, UWORD h, UWORD stride,
+                   ULONG color, ULONG flags)
+{
+    D(bug("[IEGfx] BlitFillEx(dst=%08lx, %dx%d, color=%08lx, flags=%08lx)\n",
+          dst, w, h, color, flags));
+
+    ie_write32(IE_BLT_OP, IE_BLT_OP_FILL);
+    ie_write32(IE_BLT_DST, dst);
+    ie_write32(IE_BLT_WIDTH, (ULONG)w);
+    ie_write32(IE_BLT_HEIGHT, (ULONG)h);
+    ie_write32(IE_BLT_DST_STRIDE, (ULONG)stride);
+    ie_write32(IE_BLT_COLOR, color);
+    ie_write32(IE_BLT_FLAGS, flags);
+    ie_write32(IE_BLT_CTRL, IE_BLT_CTRL_START);
+}
+
+void IE_BlitCopyEx(ULONG src, ULONG dst, UWORD w, UWORD h,
+                   UWORD src_stride, UWORD dst_stride, ULONG flags)
+{
+    D(bug("[IEGfx] BlitCopyEx(src=%08lx, dst=%08lx, %dx%d, flags=%08lx)\n",
+          src, dst, w, h, flags));
+
+    ie_write32(IE_BLT_OP, IE_BLT_OP_COPY);
+    ie_write32(IE_BLT_SRC, src);
+    ie_write32(IE_BLT_DST, dst);
+    ie_write32(IE_BLT_WIDTH, (ULONG)w);
+    ie_write32(IE_BLT_HEIGHT, (ULONG)h);
+    ie_write32(IE_BLT_SRC_STRIDE, (ULONG)src_stride);
+    ie_write32(IE_BLT_DST_STRIDE, (ULONG)dst_stride);
+    ie_write32(IE_BLT_FLAGS, flags);
+    ie_write32(IE_BLT_CTRL, IE_BLT_CTRL_START);
+}
+
+void IE_BlitColorExpand(ULONG mask, ULONG dst, UWORD w, UWORD h,
+                        UWORD mask_mod, UWORD mask_srcx, UWORD dst_stride,
+                        ULONG fg, ULONG bg, ULONG flags)
+{
+    D(bug("[IEGfx] BlitColorExpand(mask=%08lx, dst=%08lx, %dx%d, fg=%08lx, bg=%08lx)\n",
+          mask, dst, w, h, fg, bg));
+
+    ie_write32(IE_BLT_OP, IE_BLT_OP_COLOR_EXPAND);
+    ie_write32(IE_BLT_MASK, mask);
+    ie_write32(IE_BLT_DST, dst);
+    ie_write32(IE_BLT_WIDTH, (ULONG)w);
+    ie_write32(IE_BLT_HEIGHT, (ULONG)h);
+    ie_write32(IE_BLT_MASK_MOD, (ULONG)mask_mod);
+    ie_write32(IE_BLT_MASK_SRCX, (ULONG)mask_srcx);
+    ie_write32(IE_BLT_DST_STRIDE, (ULONG)dst_stride);
+    ie_write32(IE_BLT_FG, fg);
+    ie_write32(IE_BLT_BG, bg);
+    ie_write32(IE_BLT_FLAGS, flags);
+    ie_write32(IE_BLT_CTRL, IE_BLT_CTRL_START);
+}
+
+void IE_BlitLineEx(ULONG dst, UWORD dst_stride, WORD x0, WORD y0,
+                   WORD x1, WORD y1, ULONG color, ULONG flags)
+{
+    D(bug("[IEGfx] BlitLineEx(dst=%08lx, stride=%d, (%d,%d)-(%d,%d), color=%08lx)\n",
+          dst, dst_stride, x0, y0, x1, y1, color));
+
+    /*
+     * Extended line mode: BLT_FLAGS != 0 signals the Go blitter to use
+     * BLT_DST as framebuffer base and BLT_WIDTH as packed endpoint coords.
+     * BLT_SRC holds the start point, BLT_COLOR holds the line color.
+     */
+    ie_write32(IE_BLT_OP, IE_BLT_OP_LINE);
+    ie_write32(IE_BLT_SRC, ((ULONG)(UWORD)y0 << 16) | (ULONG)(UWORD)x0);
+    ie_write32(IE_BLT_WIDTH, ((ULONG)(UWORD)y1 << 16) | (ULONG)(UWORD)x1);
+    ie_write32(IE_BLT_DST, dst);
+    ie_write32(IE_BLT_DST_STRIDE, (ULONG)dst_stride);
+    ie_write32(IE_BLT_COLOR, color);
+    ie_write32(IE_BLT_FLAGS, flags);
+    ie_write32(IE_BLT_CTRL, IE_BLT_CTRL_START);
 }

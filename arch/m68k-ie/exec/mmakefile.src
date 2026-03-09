@@ -1,0 +1,11 @@
+include $(SRCDIR)/config/aros.cfg
+
+FILES := copymem copymemquick
+
+USER_INCLUDES := -I$(SRCDIR)/arch/m68k-ie/include
+
+%build_archspecific \
+  mainmmake=kernel-exec maindir=rom/exec \
+  arch=ie-m68k files="$(FILES)"
+
+%common

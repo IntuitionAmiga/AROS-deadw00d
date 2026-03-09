@@ -10,6 +10,7 @@
             Level 3 (vector 27) = Audio DMA (Paula-compatible)
             Level 4 (vector 28) = VBL (display vertical blank, 60Hz)
             Level 5 (vector 29) = System timer (5ms tick, 200Hz)
+            Level 6 (vector 30) = Coprocessor completion (IE64 worker)
 
           No shared interrupt controller, no INTENA/INTREQ register.
           Each handler simply calls core_Cause() with the appropriate
@@ -66,6 +67,7 @@ DECLARE_TrapCode(IE_Level_2);
 DECLARE_TrapCode(IE_Level_3);
 DECLARE_TrapCode(IE_Level_4);
 DECLARE_TrapCode(IE_Level_5);
+DECLARE_TrapCode(IE_Level_6);
 DECLARE_TrapCode(IE_Level_7);
 
 /*
@@ -138,6 +140,21 @@ BOOL IE_Level_5(VOID)
 }
 
 /*
+ * Level 6: Coprocessor completion (IE64 worker done).
+ * Maps to ExecBase IntVects[INTB_COPER] — repurposed from Amiga copper
+ * (IE has no copper hardware; the slot is unused).
+ * iewarp.library installs its handler via AddIntServer(INTB_COPER, ...).
+ */
+BOOL IE_Level_6(VOID)
+{
+    const UWORD mask = (1 << INTB_COPER);
+
+    core_Cause(INTB_COPER, mask);
+
+    return TRUE;
+}
+
+/*
  * Level 7: NMI — non-maskable, no reschedule.
  */
 BOOL IE_Level_7(VOID)
@@ -154,6 +171,7 @@ const struct M68KException IEExceptionTable[] = {
     { .Id = 27, .Handler = IE_Level_3_TrapCode },
     { .Id = 28, .Handler = IE_Level_4_TrapCode },
     { .Id = 29, .Handler = IE_Level_5_TrapCode },
+    { .Id = 30, .Handler = IE_Level_6_TrapCode },
     { .Id = 31, .Handler = IE_Level_7_TrapCode },
     { .Id =  0, }
 };

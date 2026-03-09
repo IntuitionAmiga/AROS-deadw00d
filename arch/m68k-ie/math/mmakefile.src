@@ -1,0 +1,31 @@
+include $(SRCDIR)/config/aros.cfg
+
+# Math library arch-specific overrides for IE64 coprocessor acceleration.
+# Individual math ops use C float/double (GCC softfloat on M68K) which is
+# faster than AROS's hand-rolled bit-level FP emulation.
+# Future: WARP_OP_FP_BATCH for bulk operations.
+
+USER_INCLUDES := -I$(SRCDIR)/arch/m68k-ie/include
+
+# mathieeesingbas overrides (single-precision)
+SINGBAS_FILES := ieeespmul ieeespdiv ieeespadd ieeespsub ieeespcmp ieeespabs ieeespneg ieeespfloor ieeespceil ieeespfix ieeespflt
+
+%build_archspecific \
+  mainmmake=kernel-mathieeesingbas maindir=rom/mathieeesingbas \
+  arch=ie-m68k files="$(SINGBAS_FILES)"
+
+# mathieeedoubbas overrides (double-precision)
+DOUBBAS_FILES := ieeedpadd ieeedpmul ieeedpdiv ieeedpsub ieeedpcmp ieeedpabs ieeedpneg ieeedpfloor ieeedpceil ieeedpfix ieeedpflt
+
+%build_archspecific \
+  mainmmake=kernel-mathieeedoubbas maindir=rom/mathieeedoubbas \
+  arch=ie-m68k files="$(DOUBBAS_FILES)"
+
+# mathtrans overrides (transcendental functions)
+TRANS_FILES := ieeespsin ieeespcos ieeespsqrt ieeespexp ieeesplog ieeesppow ieeesptan ieeespasin ieeespacos ieeespatan
+
+%build_archspecific \
+  mainmmake=kernel-mathtrans maindir=rom/mathtrans \
+  arch=ie-m68k files="$(TRANS_FILES)"
+
+%common

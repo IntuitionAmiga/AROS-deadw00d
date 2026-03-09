@@ -134,7 +134,7 @@ FILES   :=
 AFILES  :=
 
 KLIBS   := keymap graphics layers intuition gadtools icon workbench cybergraphics \
-           mathffp mathieeesingbas setpatch
+           mathffp mathieeesingbas iewarp setpatch
 KDEVS   :=
 KHNDLRS :=
 KHIDDS  := bus storage system

@@ -23,6 +23,7 @@
 #define IE_BLT_OP_MASKED_COPY   3
 #define IE_BLT_OP_ALPHA_COPY    4
 #define IE_BLT_OP_MODE7         5
+#define IE_BLT_OP_COLOR_EXPAND  6
 
 /* Blitter control bits */
 #define IE_BLT_CTRL_START       (1 << 0)
@@ -50,5 +51,16 @@ void IE_BlitCopy(ULONG src, ULONG dst, UWORD width, UWORD height,
 void IE_BlitFill(ULONG dst, UWORD width, UWORD height,
                  UWORD dst_stride, ULONG color);
 void IE_BlitWait(void);
+
+/* Extended blitter functions with BLT_FLAGS support */
+void IE_BlitFillEx(ULONG dst, UWORD w, UWORD h, UWORD stride,
+                   ULONG color, ULONG flags);
+void IE_BlitCopyEx(ULONG src, ULONG dst, UWORD w, UWORD h,
+                   UWORD src_stride, UWORD dst_stride, ULONG flags);
+void IE_BlitColorExpand(ULONG mask, ULONG dst, UWORD w, UWORD h,
+                        UWORD mask_mod, UWORD mask_srcx, UWORD dst_stride,
+                        ULONG fg, ULONG bg, ULONG flags);
+void IE_BlitLineEx(ULONG dst, UWORD dst_stride, WORD x0, WORD y0,
+                   WORD x1, WORD y1, ULONG color, ULONG flags);
 
 #endif /* IEGFX_HW_H */
