@@ -11,11 +11,13 @@
 #include <graphics/text.h>
 #include <graphics/gfx.h>
 
+#ifdef __mc68000__
 #include <libraries/iewarp.h>
 #include <ie_hwreg.h>
 
 static struct Library *IEWarpBase = NULL;
 #include <iewarp_consumer.h>
+#endif
 
 /* Coprocessor warp dispatch threshold (total glyph pixels) */
 #define GLYPH_WARP_THRESHOLD 2048
@@ -31,6 +33,7 @@ struct GlyphDesc
     ULONG fgColor;
 };
 
+#ifdef __mc68000__
 /*
  * Try to batch-render text via IEWarpGlyphRender.
  * Returns TRUE if dispatch succeeded, FALSE for fallback.
@@ -151,6 +154,7 @@ static BOOL IE_WarpTextBatch(struct RastPort *rp, struct TextFont *tf,
 
     return FALSE;
 }
+#endif
 
 AROS_LH3(LONG, Text,
     AROS_LHA(struct RastPort *, rp,     A1),
@@ -169,6 +173,7 @@ AROS_LH3(LONG, Text,
     /*
      * Try IE64 batch glyph rendering for large text operations.
      */
+#ifdef __mc68000__
     if (count >= 4 && rp->BitMap)
     {
         ULONG dstBase = (ULONG)rp->BitMap->Planes[0];
@@ -180,6 +185,7 @@ AROS_LH3(LONG, Text,
                 return (LONG)count;
         }
     }
+#endif
 
     /*
      * Fallback: render characters one at a time using BltTemplate.

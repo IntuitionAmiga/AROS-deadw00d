@@ -6,13 +6,6 @@
 
 #include <stdio.h>
 
-#include <proto/exec.h>
-#include <proto/intuition.h>
-#include <proto/muimaster.h>
-#include <proto/iewarp.h>
-#include <libraries/mui.h>
-#include <ie_hwreg.h>
-
 #include "iewarpmon_intern.h"
 
 struct Library *MUIMasterBase = NULL;
@@ -36,8 +29,7 @@ struct Library *IEWarpBase = NULL;
         struct Library *, IEWarpBase, 43, IEWarp))
 #endif
 
-/* Helper: create a labeled text row for ColGroup(2) */
-#define LLabel(str) Label(str)
+/* Helper: create a read-only text gadget for ColGroup(2) */
 #define LText()     TextObject, MUIA_Text_SetMin, FALSE, End
 
 static Object *MakePageSummary(struct IEWarpMonData *d)

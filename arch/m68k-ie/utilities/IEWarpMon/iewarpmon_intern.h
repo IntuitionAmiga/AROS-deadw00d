@@ -7,9 +7,15 @@
 #ifndef IEWARPMON_INTERN_H
 #define IEWARPMON_INTERN_H
 
-#include <exec/types.h>
+#include <proto/exec.h>
+#include <proto/dos.h>
+#include <proto/alib.h>
+#include <proto/intuition.h>
+#include <proto/muimaster.h>
+#include <proto/iewarp.h>
 #include <libraries/mui.h>
 #include <libraries/iewarp.h>
+#include <ie_hwreg.h>
 
 struct IEWarpMonData
 {

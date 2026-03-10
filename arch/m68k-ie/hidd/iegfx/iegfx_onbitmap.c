@@ -26,10 +26,12 @@
 #include <string.h>
 
 #include <ie_hwreg.h>
+#ifdef __mc68000__
 #include <libraries/iewarp.h>
 
 static struct Library *IEWarpBase = NULL;
 #include <iewarp_consumer.h>
+#endif
 
 #include "iegfx_bitmap.h"
 #include "iegfx_hidd.h"
@@ -39,6 +41,7 @@ static struct Library *IEWarpBase = NULL;
 /* Coprocessor warp dispatch threshold (bytes) */
 #define WARP_THRESHOLD 4096
 
+#ifdef __mc68000__
 /*
  * Dispatch a fill or copy operation to the IE64 coprocessor via MMIO.
  * Returns TRUE if dispatched and completed, FALSE if caller should fallback.
@@ -90,6 +93,7 @@ static BOOL IE_WarpDoBlitCopy(ULONG src, ULONG dst, UWORD w, UWORD h,
     }
     return FALSE;
 }
+#endif
 
 /*********** BitMap::New() *************************************/
 
@@ -177,9 +181,10 @@ OOP_Object *METHOD(IEBitMap, Root, New)
             return NULL;
         }
 
-        /* Clear the framebuffer — use iewarp.library MEMSET for large bitmaps */
+        /* Clear the framebuffer */
         {
             ULONG clearSize = data->bytesperline * data->height;
+#ifdef __mc68000__
             BOOL cleared = FALSE;
 
             if (clearSize >= WARP_THRESHOLD && IEWARP_OPEN())
@@ -196,6 +201,7 @@ OOP_Object *METHOD(IEBitMap, Root, New)
             }
 
             if (!cleared)
+#endif
                 memset(data->VideoData, 0, clearSize);
         }
 
@@ -330,10 +336,12 @@ VOID METHOD(IEBitMap, Hidd_BitMap, FillRect)
                     msg->minX * data->bytesperpix;
 
         /* Try coprocessor for large Copy-mode fills */
+#ifdef __mc68000__
         if (mode == vHidd_GC_DrawMode_Copy &&
             IE_WarpDoFillRect(dst, w, h, data->bytesperline,
                             fg, data->bytesperpix))
             return;
+#endif
 
         {
             ULONG bpp_flag = (data->bytesperpix == 1) ?
@@ -358,9 +366,11 @@ VOID METHOD(IEBitMap, Hidd_BitMap, Clear)
         ULONG dst = (ULONG)data->VideoData;
 
         /* Full bitmap clear — always qualifies for coprocessor */
+#ifdef __mc68000__
         if (IE_WarpDoFillRect(dst, data->width, data->height,
                             data->bytesperline, bg, data->bytesperpix))
             return;
+#endif
 
         {
             ULONG bpp_flag = (data->bytesperpix == 1) ?
@@ -448,6 +458,7 @@ VOID METHOD(IEBitMap, Hidd_BitMap, PutAlphaTemplate)
                     msg->x * data->bytesperpix;
 
         /* Try iewarp.library for large alpha blits */
+#ifdef __mc68000__
         if (size >= WARP_THRESHOLD && IEWARP_OPEN())
         {
             IEWarpSetCaller(IEWARP_CALLER_IEGFX);
@@ -464,6 +475,7 @@ VOID METHOD(IEBitMap, Hidd_BitMap, PutAlphaTemplate)
             }
             /* Dispatch failed — fall through to superclass */
         }
+#endif
     }
 
     OOP_DoSuperMethod(cl, o, (OOP_Msg)msg);
@@ -495,10 +507,12 @@ VOID METHOD(IEBitMap, Hidd_BitMap, PutImage)
                     msg->x * data->bytesperpix;
 
         /* Try coprocessor for large images */
+#ifdef __mc68000__
         if (IE_WarpDoBlitCopy(src, dst, msg->width, msg->height,
                             msg->modulo, data->bytesperline,
                             data->bytesperpix))
             return;
+#endif
 
         {
             ULONG bpp_flag = (data->bytesperpix == 1) ?
@@ -520,9 +534,11 @@ VOID METHOD(IEBitMap, Hidd_BitMap, PutImage)
                     msg->x * data->bytesperpix;
 
         /* Try coprocessor for large images */
+#ifdef __mc68000__
         if (IE_WarpDoBlitCopy(src, dst, msg->width, msg->height,
                             msg->modulo, data->bytesperline, 4))
             return;
+#endif
 
         {
             ULONG flags = IE_BLT_MAKE_FLAGS(IE_BLT_FLAGS_BPP_RGBA32,
@@ -535,6 +551,7 @@ VOID METHOD(IEBitMap, Hidd_BitMap, PutImage)
     }
 
     /* Try IE64 format conversion for known 32-bit and 24-bit formats → RGBA32 */
+#ifdef __mc68000__
     if (data->bytesperpix == 4)
     {
         ULONG warpSrcFmt = 0;
@@ -575,6 +592,7 @@ VOID METHOD(IEBitMap, Hidd_BitMap, PutImage)
             }
         }
     }
+#endif
 
     /* Other pixel formats: fall back to superclass for conversion */
     OOP_DoSuperMethod(cl, o, (OOP_Msg)msg);

@@ -10,11 +10,13 @@
 #include <graphics/rastport.h>
 #include <graphics/scale.h>
 
+#ifdef __mc68000__
 #include <libraries/iewarp.h>
 #include <ie_hwreg.h>
 
 static struct Library *IEWarpBase = NULL;
 #include <iewarp_consumer.h>
+#endif
 
 AROS_LH1(void, BitMapScale,
     AROS_LHA(struct BitScaleArgs *, bsa, A0),
@@ -30,6 +32,7 @@ AROS_LH1(void, BitMapScale,
 
     totalBytes = (ULONG)bsa->bsa_SrcWidth * (ULONG)bsa->bsa_SrcHeight;
 
+#ifdef __mc68000__
     if (totalBytes >= 4096 && IEWARP_OPEN())
     {
         APTR src = bsa->bsa_SrcBitMap->Planes[0];
@@ -56,6 +59,7 @@ AROS_LH1(void, BitMapScale,
             }
         }
     }
+#endif
 
     /* M68K fallback — simple nearest-neighbor scale */
     {

@@ -11,7 +11,17 @@
 #include <ie_hwreg.h>
 
 static struct Library *IEWarpBase = NULL;
+static BOOL iewarp_tried = FALSE;
 #include <iewarp_consumer.h>
+
+static inline BOOL iewarp_open_safe(void)
+{
+    if (IEWarpBase) return TRUE;
+    if (iewarp_tried) return FALSE;
+    iewarp_tried = TRUE;
+    IEWarpBase = OpenLibrary("iewarp.library", 0);
+    return IEWarpBase != NULL;
+}
 
 AROS_LH3(void, CopyMemQuick,
     AROS_LHA(CONST_APTR, source, A0),
@@ -22,7 +32,7 @@ AROS_LH3(void, CopyMemQuick,
     AROS_LIBFUNC_INIT
 
     /* Dispatch to IE64 coprocessor via iewarp.library */
-    if (size >= 1024 && IEWARP_OPEN())
+    if (size >= 1024 && iewarp_open_safe())
     {
         IEWarpSetCaller(IEWARP_CALLER_EXEC);
         {

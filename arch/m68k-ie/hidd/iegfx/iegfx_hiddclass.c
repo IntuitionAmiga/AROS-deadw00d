@@ -25,10 +25,12 @@
 #include <string.h>
 
 #include <ie_hwreg.h>
+#ifdef __mc68000__
 #include <libraries/iewarp.h>
 
 static struct Library *IEWarpBase = NULL;
 #include <iewarp_consumer.h>
+#endif
 
 #include "iegfx_hidd.h"
 #include "iegfx_bitmap.h"
@@ -303,6 +305,7 @@ void METHOD(IEGfx, Hidd_Gfx, CopyBox)
                            msg->destX * bm_dst->bytesperpix;
 
         /* Try coprocessor for large Copy-mode blits */
+#ifdef __mc68000__
         if (mode == vHidd_GC_DrawMode_Copy)
         {
             ULONG size = (ULONG)msg->width * (ULONG)msg->height *
@@ -330,6 +333,7 @@ void METHOD(IEGfx, Hidd_Gfx, CopyBox)
                 /* Library unavailable or dispatch failed — fall through to blitter */
             }
         }
+#endif
 
         {
             ULONG bpp_flag = (bm_src->bytesperpix == 1) ?
@@ -365,6 +369,7 @@ BOOL METHOD(IEGfx, Hidd_Gfx, CopyBoxMasked)
         struct IEGfxBitmapData *bm_dst = OOP_INST_DATA(OOP_OCLASS(msg->dest), msg->dest);
 
         /* Both RGBA32, mask present, large enough for coprocessor */
+#ifdef __mc68000__
         if (bm_src->bytesperpix == 4 && bm_dst->bytesperpix == 4 &&
             msg->mask != NULL)
         {
@@ -428,6 +433,7 @@ BOOL METHOD(IEGfx, Hidd_Gfx, CopyBoxMasked)
                 /* Allocation or dispatch failed — fall through */
             }
         }
+#endif
     }
 
     return (BOOL)OOP_DoSuperMethod(cl, o, (OOP_Msg)msg);

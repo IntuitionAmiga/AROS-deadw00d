@@ -12,11 +12,13 @@
 #include <graphics/clip.h>
 #include <graphics/gfx.h>
 
+#ifdef __mc68000__
 #include <libraries/iewarp.h>
 #include <ie_hwreg.h>
 
 static struct Library *IEWarpBase = NULL;
 #include <iewarp_consumer.h>
+#endif
 
 #define IE_SCROLL_THRESHOLD 4096  /* minimum area (pixels) for IE64 dispatch */
 
@@ -40,6 +42,7 @@ AROS_LH7(void, ScrollRasterBF,
         return;
 
     /* Dispatch batched blit+fill to IE64 via iewarp.library */
+#ifdef __mc68000__
     if ((LONG)(width * height) >= IE_SCROLL_THRESHOLD &&
         rp->BitMap && IEWARP_OPEN())
     {
@@ -62,6 +65,7 @@ AROS_LH7(void, ScrollRasterBF,
             }
         }
     }
+#endif
 
     /* Fallback: delegate to default graphics.library ScrollRasterBF */
     ClipBlit(rp, xMin, yMin, rp, xMin + dx, yMin + dy,

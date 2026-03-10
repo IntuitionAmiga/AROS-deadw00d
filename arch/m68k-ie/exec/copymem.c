@@ -11,7 +11,23 @@
 #include <ie_hwreg.h>
 
 static struct Library *IEWarpBase = NULL;
+static BOOL iewarp_tried = FALSE;
 #include <iewarp_consumer.h>
+
+/*
+ * Re-entrant safe open: CopyMem is called by OpenLibrary itself,
+ * so IEWARP_OPEN() would cause infinite recursion. This guard
+ * prevents re-entry — the nested CopyMem from OpenLibrary just
+ * uses the M68K fallback path.
+ */
+static inline BOOL iewarp_open_safe(void)
+{
+    if (IEWarpBase) return TRUE;
+    if (iewarp_tried) return FALSE;
+    iewarp_tried = TRUE;
+    IEWarpBase = OpenLibrary("iewarp.library", 0);
+    return IEWarpBase != NULL;
+}
 
 AROS_LH3(void, CopyMem,
     AROS_LHA(CONST_APTR, source, A0),
@@ -25,7 +41,7 @@ AROS_LH3(void, CopyMem,
     UBYTE *d = (UBYTE *)dest;
 
     /* Dispatch to IE64 coprocessor via iewarp.library */
-    if (size >= 1024 && IEWARP_OPEN())
+    if (size >= 1024 && iewarp_open_safe())
     {
         IEWarpSetCaller(IEWARP_CALLER_EXEC);
         {

@@ -10,11 +10,13 @@
 #include <graphics/rastport.h>
 #include <graphics/gfx.h>
 
+#ifdef __mc68000__
 #include <libraries/iewarp.h>
 #include <ie_hwreg.h>
 
 static struct Library *IEWarpBase = NULL;
 #include <iewarp_consumer.h>
+#endif
 
 #define IE_AREA_THRESHOLD 4096  /* minimum bounding-box area for IE64 dispatch */
 
@@ -54,6 +56,7 @@ AROS_LH1(LONG, AreaEnd,
     area = (LONG)(maxX - minX + 1) * (LONG)(maxY - minY + 1);
 
     /* Dispatch WARP_OP_AREA_FILL via iewarp.library */
+#ifdef __mc68000__
     if (area >= IE_AREA_THRESHOLD && rp->BitMap && IEWARP_OPEN())
     {
         APTR base = rp->BitMap->Planes[0];
@@ -76,6 +79,7 @@ AROS_LH1(LONG, AreaEnd,
             }
         }
     }
+#endif
 
     /*
      * M68K fallback: scanline polygon fill using RectFill.
