@@ -1,8 +1,19 @@
 include $(SRCDIR)/config/aros.cfg
 
+IEWARP_ARCH_INCDIR := $(SRCDIR)/arch/m68k-ie/include
+
 FILES := iewarp_init iewarp_dispatch iewarp_ops
 
-USER_INCLUDES := -I$(SRCDIR)/arch/m68k-ie/include
+USER_INCLUDES := -I$(IEWARP_ARCH_INCDIR)
+
+# Install arch-specific headers into the AROS SDK include path
+#MM includes-copy
+INCLUDE_FILES := iewarp.h
+%copy_includes path=libraries dir=$(IEWARP_ARCH_INCDIR)/libraries
+
+#MM includes-copy
+INCLUDE_FILES := iewarp_consumer.h ie_hwreg.h
+%copy_includes dir=$(IEWARP_ARCH_INCDIR)
 
 %build_module mmake=kernel-iewarp \
   modname=iewarp modtype=library \
