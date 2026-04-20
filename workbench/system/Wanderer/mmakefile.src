@@ -21,7 +21,7 @@ FILES := main \
     appobjects
 
 ## Disabled — IE platform uses Workbook instead of Wanderer
-##MM- workbench-system : workbench-system-wanderer
+#MM- workbench-system : workbench-system-wanderer
 #MM- workbench-system-wanderer : \
 #MM  workbench-system-wanderer-app \
 #MM  workbench-system-wanderer-icons \

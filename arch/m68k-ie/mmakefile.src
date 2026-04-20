@@ -26,4 +26,4 @@ include $(SRCDIR)/config/aros.cfg
 
 #MM- AROS-complete-ie-m68k : AROS-ie-m68k
 
-#MM- includes-ie-m68k : includes-common-i386 includes-copy-ie-m68k includes-copy
+#MM- includes-ie-m68k : includes-copy-ie-m68k includes-copy

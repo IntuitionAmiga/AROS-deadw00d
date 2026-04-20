@@ -43,25 +43,11 @@ SUBDIRS		= Device Filesave Void
 # Add supported native drivers
 #
 ifneq ($(strip $(HAVE_ASMIO)),)
-SUBDIRS		+= ac97
-SUBDIRS		+= HDAudio
-SUBDIRS		+= SB128
-SUBDIRS		+= VIA-AC97
-SUBDIRS		+= CMI8738
 ifneq ($(host_cpu),x86_64)
-SUBDIRS		+= EMU10kx
-SUBDIRS		+= Envy24HT
-SUBDIRS		+= Envy24
 endif
 endif
 
-ifneq ($(strip $(HAVE_OPENPCI)),)
-SUBDIRS		+= EMU10kx
-endif
 
-ifeq ($(strip $(host)),powerpc-unknown-amigaos)
-SUBDIRS		+= EMU10kx
-endif
 
 #
 # Add supported AROS hosted drivers
