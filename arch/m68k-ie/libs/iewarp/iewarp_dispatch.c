@@ -121,7 +121,9 @@ found_task:
 
     /* Ring high water mark (approximate) */
     {
-        ULONG head = ie_read32(IE_COPROC_RING_DEPTH);
+        ULONG head;
+        ie_write32(IE_COPROC_CPU_TYPE, IE_EXEC_TYPE_IE64);
+        head = ie_read32(IE_COPROC_RING_DEPTH);
         if (head > base->ringHighWater)
             base->ringHighWater = head;
     }
@@ -369,6 +371,7 @@ AROS_LH1(ULONG, IEWarpGetStats,
         stats->overheadNs = ie_read32(IE_COPROC_DISPATCH_OVERHEAD);
         stats->completedTicket = ie_read32(IE_COPROC_COMPLETED_TICKET);
         stats->threshold = IEWarpBase->threshold;
+        ie_write32(IE_COPROC_CPU_TYPE, IE_EXEC_TYPE_IE64);
         stats->ringDepth = ie_read32(IE_COPROC_RING_DEPTH);
         stats->ringHighWater = IEWarpBase->ringHighWater;
         stats->uptimeSecs = ie_read32(IE_COPROC_WORKER_UPTIME);
