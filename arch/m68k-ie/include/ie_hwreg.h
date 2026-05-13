@@ -227,6 +227,7 @@
 #define IE_DOS_CMD_SET_FILESIZE 20  /* ARG1=handle, ARG2=size, ARG3=mode */
 #define IE_DOS_CMD_SET_PROTECT  21  /* ARG1=parent, ARG2=name, ARG3=bits */
 #define IE_DOS_CMD_EXAMINE_FH   22  /* ARG1=handle, ARG2=fib_ptr → fills FIB */
+#define IE_DOS_CMD_LOADSEG_SYMS 23  /* ARG1=name, ARG2=parent, ARG3=relocation base */
 
 /* ========================================================================
  * Coprocessor MMIO (0xF2340 - 0xF238F)

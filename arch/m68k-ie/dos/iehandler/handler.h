@@ -9,11 +9,14 @@
 
 #include <exec/libraries.h>
 #include <exec/ports.h>
+#include <exec/semaphores.h>
 #include <dos/dos.h>
 #include <dos/dosextens.h>
 #include <dos/filehandler.h>
 
 #include "ie_hwreg.h"
+
+#define IE_DOS_MMIO_SEM_NAME "ie.dos.mmio"
 
 /* Handler context — allocated during startup, lives for handler lifetime */
 struct IEHandler
@@ -22,6 +25,7 @@ struct IEHandler
     struct DosList *volume;         /* Registered volume entry */
     struct Library *dosBase;        /* dos.library */
     struct Library *utilityBase;    /* utility.library (if needed) */
+    struct SignalSemaphore mmio_sem;/* Serialises shared IE_DOS_* MMIO regs */
     BOOL           running;         /* Main loop flag */
 };
 

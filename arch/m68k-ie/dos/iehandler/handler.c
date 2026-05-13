@@ -742,10 +742,14 @@ LONG IEHandlerMain(struct ExecBase *sysBase)
     }
     handler.proc_port = proc_port;
     handler.running = TRUE;
+    InitSemaphore(&handler.mmio_sem);
+    handler.mmio_sem.ss_Link.ln_Name = IE_DOS_MMIO_SEM_NAME;
+    AddSemaphore(&handler.mmio_sem);
 
     handler.dosBase = OpenLibrary("dos.library", 39);
     if (!handler.dosBase) {
         D(bug("[iehandler] Cannot open dos.library!\n"));
+        RemSemaphore(&handler.mmio_sem);
         ReplyPacket(proc_port, startup_pkt, DOSFALSE, ERROR_INVALID_RESIDENT_LIBRARY);
         return RETURN_FAIL;
     }
@@ -783,6 +787,7 @@ LONG IEHandlerMain(struct ExecBase *sysBase)
 
             D(bug("[iehandler] Packet type=%ld\n", (long)pkt->dp_Type));
 
+            ObtainSemaphore(&handler.mmio_sem);
             switch (pkt->dp_Type) {
 
             /* Lock operations */
@@ -935,6 +940,7 @@ LONG IEHandlerMain(struct ExecBase *sysBase)
                 res2 = ERROR_ACTION_NOT_KNOWN;
                 break;
             }
+            ReleaseSemaphore(&handler.mmio_sem);
 
             ReplyPacket(proc_port, pkt, res1, res2);
         }
@@ -947,6 +953,7 @@ LONG IEHandlerMain(struct ExecBase *sysBase)
     }
     if (handler.dosBase)
         CloseLibrary(handler.dosBase);
+    RemSemaphore(&handler.mmio_sem);
 
     D(bug("[iehandler] Shutdown complete\n"));
 
