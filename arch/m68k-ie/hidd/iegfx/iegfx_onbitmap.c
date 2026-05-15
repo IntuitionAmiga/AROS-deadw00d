@@ -2,7 +2,7 @@
     Copyright (C) 2026, The AROS Development Team. All rights reserved.
 
     Desc: Bitmap class for IE Gfx HIDD.
-          Displayable bitmaps are allocated in VRAM (0x100000+).
+          Displayable bitmaps are allocated in IE VRAM (0x1E00000+).
           Supports RGBA32 (direct color) and CLUT8 (256-color palette).
           Hardware-accelerated FillRect, Clear, PutTemplate, PutAlphaTemplate, PutImage, GetImage, DrawLine.
 */
@@ -145,9 +145,10 @@ OOP_Object *METHOD(IEBitMap, Root, New)
                 data->width, data->height, data->bytesperpix, data->bytesperline));
 
         /*
-         * Allocate framebuffer in VRAM via bump allocator.
-         * VRAM at 0x100000-0x5FFFFF is directly accessible by both
-         * the CPU and the VideoChip — no copy needed for display.
+         * Allocate framebuffer in the AROS/IEGfx direct VRAM window via
+         * bump allocator. IE_VRAM_BASE..IE_VRAM_BASE+IE_VRAM_SIZE is directly
+         * accessible by both the CPU and the VideoChip — no copy needed for
+         * display.
          */
         {
             struct IEGfx_staticdata *xsd = XSD(cl);

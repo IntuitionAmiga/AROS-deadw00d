@@ -2,7 +2,7 @@
     Copyright (C) 2026, The AROS Development Team. All rights reserved.
 
     Desc: Intuition Engine Graphics HIDD class.
-          Multi-resolution (640x480, 800x600, 1024x768, 1280x960)
+          Multi-resolution (1920x1080, 1280x960, 1024x768, 800x600, 640x480)
           with CLUT8 and RGBA32 pixel formats.  Hardware blitter, no sprite.
 */
 
@@ -60,20 +60,24 @@ static struct Library *IEWarpBase = NULL;
 OOP_Object *METHOD(IEGfx, Root, New)
 {
     /*
-     * IE supports four display modes with standard VESA timings.
+     * IE supports display modes with standard VESA timings.
      * The pixel clocks are notional (IE renders at host framerate) but
      * correct timings are provided for AROS mode enumeration / ScreenMode prefs.
+     * 1920x1080 is listed first so Workbench's default mode selection prefers
+     * the full IE desktop while smaller modes remain available.
      */
     MAKE_SYNC(640x480,   25175,  640,  656,  752,  800,  480, 490, 492, 525, 0, "IE:640x480");
     MAKE_SYNC(800x600,   40000,  800,  840,  968, 1056,  600, 601, 605, 628, 0, "IE:800x600");
     MAKE_SYNC(1024x768,  65000, 1024, 1048, 1184, 1344,  768, 771, 777, 806, 0, "IE:1024x768");
     MAKE_SYNC(1280x960, 108000, 1280, 1376, 1488, 1800,  960, 961, 964,1000, 0, "IE:1280x960");
+    MAKE_SYNC(1920x1080,148500, 1920, 2008, 2052, 2200, 1080,1084,1089,1125, 0, "IE:1920x1080");
 
     struct TagItem syncs[] = {
-        { aHidd_Gfx_SyncTags,       (IPTR)sync_640x480  },
-        { aHidd_Gfx_SyncTags,       (IPTR)sync_800x600  },
-        { aHidd_Gfx_SyncTags,       (IPTR)sync_1024x768 },
+        { aHidd_Gfx_SyncTags,       (IPTR)sync_1920x1080 },
         { aHidd_Gfx_SyncTags,       (IPTR)sync_1280x960 },
+        { aHidd_Gfx_SyncTags,       (IPTR)sync_1024x768 },
+        { aHidd_Gfx_SyncTags,       (IPTR)sync_800x600  },
+        { aHidd_Gfx_SyncTags,       (IPTR)sync_640x480  },
         { TAG_DONE, 0UL }
     };
 
@@ -472,7 +476,9 @@ OOP_Object *METHOD(IEGfx, Hidd_Gfx, Show)
         /* Map bitmap dimensions to the correct VideoChip mode */
         {
             UWORD ie_mode = IE_MODE_640x480;
-            if (bmdata->width >= 1280 && bmdata->height >= 960)
+            if (bmdata->width >= 1920 && bmdata->height >= 1080)
+                ie_mode = IE_MODE_1920x1080;
+            else if (bmdata->width >= 1280 && bmdata->height >= 960)
                 ie_mode = IE_MODE_1280x960;
             else if (bmdata->width >= 1024 && bmdata->height >= 768)
                 ie_mode = IE_MODE_1024x768;

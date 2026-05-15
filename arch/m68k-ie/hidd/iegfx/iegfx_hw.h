@@ -15,6 +15,7 @@
 #define IE_MODE_800x600         IE_VIDEO_MODE_800x600
 #define IE_MODE_1024x768        IE_VIDEO_MODE_1024x768
 #define IE_MODE_1280x960        IE_VIDEO_MODE_1280x960
+#define IE_MODE_1920x1080       IE_VIDEO_MODE_1920x1080
 
 /* IE blitter operations */
 #define IE_BLT_OP_COPY          0
