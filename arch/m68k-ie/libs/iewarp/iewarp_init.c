@@ -11,7 +11,7 @@
 #include "iewarp_intern.h"
 
 /* Service binary path (relative to baseDir) */
-static const char ie64_service[] = "AROS/Libs/iewarp_service.ie64";
+static const char ie64_service[] = "Systems/AROS/Libs/iewarp_service.ie64";
 
 /* Completion interrupt handler — signals all waiting tasks */
 static AROS_INTH1(coprocCompletionHandler, struct IEWarpBase *, base)
