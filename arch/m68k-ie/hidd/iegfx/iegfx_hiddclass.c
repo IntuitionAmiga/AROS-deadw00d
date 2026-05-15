@@ -206,6 +206,18 @@ VOID METHOD(IEGfx, Root, Get)
         OOP_DoSuperMethod(cl, o, (OOP_Msg)msg);
 }
 
+/*********** GfxHidd::NominalDimensions() ********************/
+
+VOID METHOD(IEGfx, Hidd_Gfx, NominalDimensions)
+{
+    if (msg->width)
+        *(msg->width) = 1920;
+    if (msg->height)
+        *(msg->height) = 1080;
+    if (msg->depth)
+        *(msg->depth) = 32;
+}
+
 /*********** GfxHidd::CreateObject() *************************/
 
 OOP_Object *METHOD(IEGfx, Hidd_Gfx, CreateObject)
