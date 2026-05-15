@@ -48,13 +48,13 @@ rom_init:
 	clr.l	12(%a4)			/* reserved */
 
 	/* ---- Memory bank list ---- */
-	/* IE memory layout (32MB bus):
+	/* IE memory layout:
 	 * Chip A: 0x002800 - 0x09FFFF (630KB, vectors+stack below)
 	 * I/O:    0x0A0000 - 0x0FFFFF (VGA + MMIO holes, skipped)
 	 * Chip B: 0x100000 - 0x5FFFFF (5MB)
 	 * ROM:    0x600000 - 0x7FFFFF (2MB, AROS ROM image)
 	 * Fast:   0x800000 - 0x1DFFFFF (22MB)
-	 * VRAM:   0x1E00000 - 0x1FFFFFF (2MB, managed by IEGfx HIDD)
+	 * VRAM:   0x1E00000 - 0x5DFFFFF (64MB, managed by IEGfx HIDD)
 	 * Sentinel: 0, 0
 	 *
 	 * The bank list is {start, size} pairs terminated by {0, 0}.
@@ -63,7 +63,7 @@ rom_init:
 	 * Total: ~5.6MB chip + 22MB fast = ~27.6MB
 	 *
 	 * NOTE: VRAM is NOT added to Exec's memory pool. The IEGfx HIDD
-	 * owns 0x1E00000-0x1FFFFFF via a bump allocator.
+	 * owns 0x1E00000-0x5DFFFFF via a bump allocator.
 	 */
 
 	/* Fast: 22MB (first bank = ExecBase, always MEMF_FAST) */

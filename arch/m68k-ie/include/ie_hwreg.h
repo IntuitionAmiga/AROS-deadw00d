@@ -311,7 +311,7 @@
 #define IE_MAIN_RAM_BASE    0x000000    /* Start of main RAM */
 #define IE_MAIN_RAM_END     0x09EFFF    /* End of main RAM (636KB) */
 #define IE_VRAM_BASE        0x1E00000   /* AROS IEGfx direct VRAM base */
-#define IE_VRAM_SIZE        0x1000000   /* Video RAM size (16MB, enough for 1920x1080x32) */
+#define IE_VRAM_SIZE        0x4000000   /* Video RAM size (64MB for 1080p Workbench buffers) */
 #define IE_ROM_BASE         0x600000    /* AROS ROM load address */
 #define IE_IO_BASE          0xF0000     /* I/O region start */
 #define IE_IO_END           0xFFFFF     /* I/O region end */
@@ -321,8 +321,8 @@
  * Chip B: 0x100000 - 0x5FFFFF (5MB)
  * ROM:    0x600000 - 0x7FFFFF (2MB, AROS ROM image)
  * Fast:   0x800000 - 0x1DFFFFF (22MB)
- * VRAM:   0x1E00000 - 0x2DFFFFF (16MB, IEGfx HIDD bump allocator)
- * Minimum bus: 0x2E00000 bytes so the full direct VRAM window is backed.
+ * VRAM:   0x1E00000 - 0x5DFFFFF (64MB, IEGfx HIDD bump allocator)
+ * Minimum bus: 0x5E00000 bytes so the full direct VRAM window is backed.
  */
 #define IE_MEM_BANK1_START  0x002800
 #define IE_MEM_BANK1_SIZE   0x09D800    /* 630KB */
