@@ -671,7 +671,7 @@ AROS_LH0(VOID, IEWarpWorkerStart,
 
     /* ie64_service is the static path string from iewarp_init.c —
      * we redeclare it here since it's a fixed ROM constant. */
-    static const char ie64_service[] = "sdk/examples/asm/iewarp_service.ie64";
+    static const char ie64_service[] = "AROS/Libs/iewarp_service.ie64";
 
     ie_write32(IE_COPROC_CPU_TYPE, IE_EXEC_TYPE_IE64);
     ie_write32(IE_COPROC_NAME_PTR, (ULONG)ie64_service);
