@@ -82,17 +82,31 @@ OOP_Object *METHOD(IEGfx, Root, New)
     };
 
     /*
-     * IE pixel format: RGBA byte order in memory (R at byte 0).
-     * The IE bus is little-endian; M68K Write32 byte-swaps to LE.
-     * With RGBA32, M68K pixel value (R<<24)|(G<<16)|(B<<8)|A
-     * byte-swaps to LE memory: byte[0]=R, byte[1]=G, byte[2]=B, byte[3]=A
-     * which matches the VideoChip's expected RGBA byte layout.
+     * IE pixel format: R8G8B8A8 in memory (R at byte 0).  These shift
+     * values MUST match AROS's canonical RGBA32 entry in
+     * rom/hidds/gfx/stdpixfmts_be.h (mask 0xFF000000 -> shift 0):
+     *
+     *   Red   mask 0xFF000000  shift 0
+     *   Green mask 0x00FF0000  shift 8
+     *   Blue  mask 0x0000FF00  shift 16
+     *   Alpha mask 0x000000FF  shift 24
+     *
+     * AROS MapColor positions each component by its shift; using the
+     * reversed shifts (24/16/8/0) masks the red and green contributions
+     * to zero, producing single-channel pens (the "everything is one
+     * colour" bug).  MapColor therefore yields 0xRRGGBBAA, which a native
+     * M68K (big-endian) store lands as VRAM bytes [R,G,B,A].
+     *
+     * NOTE: the IE blitter's BLT_COLOR register is consumed little-endian
+     * (R in the LOW byte) and stored to VRAM little-endian, so the blitter
+     * dispatch path byte-swaps this value via ie_blt_color(); the warp and
+     * CPU-direct paths take the native value unchanged.
      */
     struct TagItem pftags_32bpp[] = {
-        { aHidd_PixFmt_RedShift,        24      },
-        { aHidd_PixFmt_GreenShift,      16      },
-        { aHidd_PixFmt_BlueShift,       8       },
-        { aHidd_PixFmt_AlphaShift,      0       },
+        { aHidd_PixFmt_RedShift,        0       },
+        { aHidd_PixFmt_GreenShift,      8       },
+        { aHidd_PixFmt_BlueShift,       16      },
+        { aHidd_PixFmt_AlphaShift,      24      },
         { aHidd_PixFmt_RedMask,         0xFF000000 },
         { aHidd_PixFmt_GreenMask,       0x00FF0000 },
         { aHidd_PixFmt_BlueMask,        0x0000FF00 },

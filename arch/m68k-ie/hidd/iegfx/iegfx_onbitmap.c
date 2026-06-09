@@ -41,6 +41,30 @@ static struct Library *IEWarpBase = NULL;
 /* Coprocessor warp dispatch threshold (bytes) */
 #define WARP_THRESHOLD 4096
 
+/*
+ * Byte-swap a 32bpp HIDDT_Pixel for the IE blitter's BLT_COLOR register.
+ *
+ * MapColor produces a native big-endian pixel (R in the high byte,
+ * 0xRRGGBBAA).  The framebuffer is byte-addressed [R,G,B,A] and:
+ *   - CPU-direct and the warp engine store the pixel big-endian, so they
+ *     take the native value unchanged and land [R,G,B,A];
+ *   - the IE blitter (BLT_COLOR / IE_BlitFillEx / IE_BlitLineEx /
+ *     IE_BlitColorExpand) consumes the register as little-endian RGBA and
+ *     stores it little-endian, so it needs the bytes reversed to 0xAABBGGRR
+ *     to land [R,G,B,A].
+ *
+ * CLUT8 (bpp != 4) uses an 8-bit index in the low byte — never swap it.
+ */
+static inline ULONG ie_blt_color(ULONG pixel, UBYTE bpp)
+{
+    if (bpp != 4)
+        return pixel;
+    return ((pixel & 0x000000FFUL) << 24) |
+           ((pixel & 0x0000FF00UL) << 8)  |
+           ((pixel & 0x00FF0000UL) >> 8)  |
+           ((pixel & 0xFF000000UL) >> 24);
+}
+
 #ifdef __mc68000__
 /*
  * Dispatch a fill or copy operation to the IE64 coprocessor via MMIO.
@@ -349,7 +373,8 @@ VOID METHOD(IEBitMap, Hidd_BitMap, FillRect)
                 IE_BLT_FLAGS_BPP_CLUT8 : IE_BLT_FLAGS_BPP_RGBA32;
             ULONG flags = IE_BLT_MAKE_FLAGS(bpp_flag, mode);
 
-            IE_BlitFillEx(dst, w, h, data->bytesperline, fg, flags);
+            IE_BlitFillEx(dst, w, h, data->bytesperline,
+                          ie_blt_color(fg, data->bytesperpix), flags);
         }
     }
 }
@@ -379,7 +404,8 @@ VOID METHOD(IEBitMap, Hidd_BitMap, Clear)
             ULONG flags = IE_BLT_MAKE_FLAGS(bpp_flag, vHidd_GC_DrawMode_Copy);
 
             IE_BlitFillEx(dst, data->width, data->height,
-                          data->bytesperline, bg, flags);
+                          data->bytesperline,
+                          ie_blt_color(bg, data->bytesperpix), flags);
         }
     }
 }
@@ -431,7 +457,8 @@ VOID METHOD(IEBitMap, Hidd_BitMap, PutTemplate)
 
         IE_BlitColorExpand(mask, dst, msg->width, msg->height,
                            msg->modulo, msg->srcx, data->bytesperline,
-                           fg, bg, flags);
+                           ie_blt_color(fg, data->bytesperpix),
+                           ie_blt_color(bg, data->bytesperpix), flags);
     }
 }
 
@@ -731,7 +758,8 @@ VOID METHOD(IEBitMap, Hidd_BitMap, DrawLine)
                 return; /* Line fully outside clip rect */
         }
 
-        IE_BlitLineEx(dst, data->bytesperline, x0, y0, x1, y1, fg, flags);
+        IE_BlitLineEx(dst, data->bytesperline, x0, y0, x1, y1,
+                      ie_blt_color(fg, data->bytesperpix), flags);
     }
 }
 
