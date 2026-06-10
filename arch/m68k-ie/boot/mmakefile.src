@@ -24,7 +24,6 @@ include $(SRCDIR)/config/aros.cfg
 #MM     kernel-fs-ram-kobj \
 #MM     kernel-ie-m68k-handler-kobj \
 #MM     kernel-ie-m68k-audio-kobj \
-#MM     workbench-devs-clipboard-kobj \
 #MM     kernel-graphics-kobj \
 #MM     kernel-hidd-kobj \
 #MM     kernel-hidd-gfx-kobj \
@@ -107,9 +106,13 @@ AFILES=rom_entry rom_init superstack_swap
 # =============================================
 # ROM contents — core libraries and IE drivers
 # =============================================
+# clipboard.device is deliberately NOT a ROM module: its autoinit has a
+# mandatory dos.library dependency, so a COLDSTART resident init would run
+# before dos.library exists and fail every boot. It ships in DEVS: instead
+# and is demand-loaded after DOS is up (stock AROS layout).
 
 KLIBS   := exec aros dos utility oop expansion debug
-KDEVS   := timer input keyboard gameport console audio clipboard
+KDEVS   := timer input keyboard gameport console audio
 KHNDLRS := con ram iehandler
 KHIDDS  := iekbd iemouse iegfx gfx hiddclass inputclass keyboard mouse
 KRSRCS  := kernel processor task lddemon dosboot FileSystem misc shell battclock
