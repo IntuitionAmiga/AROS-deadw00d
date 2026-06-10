@@ -284,6 +284,17 @@ void exec_boot(ULONG *membanks, ULONG *cpupcr)
 
     SysBase->AttnFlags = attnflags;
 
+    /* ExecBase is freshly cleared, so LastAlert[0] would read 0. alert.hook
+     * (RTF_COLDSTART) treats anything != -1 as a guru left over from the
+     * previous session and replays it as a "Program alert" requester on
+     * every boot. Mark "no previous alert" the same way m68k-amiga does.
+     * (IE has no warm-reset alert cookie yet; cold boot semantics only.)
+     */
+    SysBase->LastAlert[0] = -1;
+    SysBase->LastAlert[1] = 0;
+    SysBase->LastAlert[2] = 0;
+    SysBase->LastAlert[3] = 0;
+
     /* GetCC instruction depends on CPU model — 68020 uses move.w %ccr,%d0 */
     /* move.w %ccr,%d0; rts; nop */
     FAKE_IT(SysBase, Exec, GetCC, LVOGetCC, 0x42c0, 0x4e75, 0x4e71);
