@@ -28,10 +28,11 @@ rom_init:
 	lea.l	_ss,%a5
 
 	/* ---- CPU/FPU data ---- */
-	/* IE provides a 68020 CPU.  FPU is not yet emulated, so the
-	 * high word of cpupcr[0] is 0 (no FPU).  When FPU emulation
-	 * is added, set the high word to the FPU ID (0x1F = 68881,
-	 * 0x20 = 68882) to enable AROS FPU context save/restore.
+	/* IE provides a 68020 CPU with a full 68881/68882 FPU emulation
+	 * (including FSAVE/FRESTORE state frames), so the high word of
+	 * cpupcr[0] carries the FPU ID (0x20 = 68882). start.c turns this
+	 * into AFF_FPU|AFF_68881|AFF_68882 and AROS then performs FPU
+	 * context save/restore on task switches.
 	 *
 	 * AttnFlags layout (low word of cpupcr[0]):
 	 *   bit 0 = AFB_68010
@@ -42,7 +43,7 @@ rom_init:
 	 */
 	move.l	%a5,%a4		/* CPU/FPU data array pointer */
 	lea	16(%a5),%a5	/* Reserve 16 bytes for CPU data + extra membank */
-	move.l	#0x00002003,(%a4)	/* cpupcr[0]: AttnFlags (no FPU) */
+	move.l	#0x00202003,(%a4)	/* cpupcr[0]: 68882 FPU ID | AttnFlags */
 	clr.l	4(%a4)			/* cpupcr[1]: PCR = 0 (no PCR on 68020) */
 	clr.l	8(%a4)			/* reserved */
 	clr.l	12(%a4)			/* reserved */
