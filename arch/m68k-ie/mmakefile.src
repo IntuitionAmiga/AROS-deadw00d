@@ -20,7 +20,8 @@ include $(SRCDIR)/config/aros.cfg
 
 #MM- software-ie-m68k : general-setup binary-ie-m68k \
 #MM	    workbench-ie-m68k \
-#MM	    arch-ie-m68k-utilities-iewarpmon
+#MM	    arch-ie-m68k-utilities-iewarpmon \
+#MM	    arch-ie-m68k-devs-camdmidi
 
 #MM- workbench-ie-m68k : workbench-complete workbench
 

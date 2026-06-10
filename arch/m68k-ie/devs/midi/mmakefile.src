@@ -1,0 +1,19 @@
+
+include $(SRCDIR)/config/aros.cfg
+
+# CAMD leaf driver for the Intuition Engine live-MIDI MMIO port. Lives under
+# arch/m68k-ie (not workbench/devs/midi) on purpose: it stores to fixed IE
+# MMIO addresses, so it must only ever be built and installed for the
+# ie-m68k target. camd.library loads every DEVS:Midi entry, so shipping it
+# on other targets would fault or corrupt memory there.
+
+FILES  := ie
+EXEDIR := $(AROS_DEVS)/Midi
+
+#MM arch-ie-m68k-devs-camdmidi : includes linklibs
+
+%build_prog mmake=arch-ie-m68k-devs-camdmidi \
+    progname=ie targetdir=$(EXEDIR) \
+    files=$(FILES)
+
+%common
