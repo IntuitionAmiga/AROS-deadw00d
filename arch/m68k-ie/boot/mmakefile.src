@@ -63,7 +63,8 @@ include $(SRCDIR)/config/aros.cfg
 #MM     linklibs-loadseg \
 #MM     linklibs-stdc-static \
 #MM     compiler-crt \
-#MM     compiler-stdlib
+#MM     compiler-stdlib \
+#MM     compiler-m
 
 %get_archincludes modname=kernel \
     includeflag=TARGET_KERNEL_INCLUDES maindir=rom/kernel
