@@ -103,8 +103,8 @@ void writemakefile(struct config *cfg)
     if (cfg->options & OPTION_INCLUDES)
     {
         fprintf(out,
-                "clib/%s_protos.h inline/%s.h defines/%s.h proto/%s.h",
-                cfg->includename, cfg->includename, cfg->includename, cfg->includename
+                "clib/%s_protos.h inline/%s.h defines/%s.h defines/%s_LVO.h proto/%s.h",
+                cfg->includename, cfg->includename, cfg->includename, cfg->includename, cfg->includename
         );
     }
     if (cfg->interfacelist)
