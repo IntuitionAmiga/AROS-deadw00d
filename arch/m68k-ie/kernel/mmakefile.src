@@ -17,6 +17,9 @@ PRIV_KERNEL_INCLUDES = \
 	$(TARGET_EXEC_INCLUDES) \
 	-I$(SRCDIR)/rom/exec
 
+#MM kernel-kernel-ie-m68k : includes
+#MM- kernel-kernel-ie-m68k-kobj : includes
+
 FILES := \
         cause \
         cli \
@@ -38,4 +41,4 @@ USER_CFLAGS := -Os
 
 %build_archspecific \
   mainmmake=kernel-kernel modname=kernel maindir=rom/kernel arch=ie-m68k \
-  files="$(FILES)" asmfiles="$(AFILES)" compiler=kernel
+  files="$(FILES)" asmfiles="$(AFILES)" compiler=kernel usesdks="private config"

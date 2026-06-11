@@ -1,6 +1,9 @@
 
 include $(SRCDIR)/config/aros.cfg
 
+#MM kernel-timer-ie-m68k : includes
+#MM- kernel-timer-ie-m68k-kobj : includes
+
 FILES := timer_init abortio beginio readeclock lowlevel getsystime getuptime initcustom
 
 USER_INCLUDES := -I$(SRCDIR)/arch/$(CPU)-$(ARCH)/timer \
@@ -9,6 +12,6 @@ USER_INCLUDES := -I$(SRCDIR)/arch/$(CPU)-$(ARCH)/timer \
 %build_archspecific \
   mainmmake=kernel-timer maindir=rom/timer \
   arch=ie-m68k modname=timer \
-  files="$(FILES)"
+  files="$(FILES)" usesdks="private config"
 
 %common
