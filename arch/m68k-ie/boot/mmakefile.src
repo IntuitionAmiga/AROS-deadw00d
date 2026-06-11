@@ -81,7 +81,7 @@ PRIV_KERNEL_INCLUDES = \
 OPTIMIZATION_CFLAGS := -Os
 
 USELIBS := amiga arossupport autoinit libinit stdc.static
-LIBS    := -L$(GENDIR)/lib -lloadseg $(addprefix -l,$(USELIBS))
+LIBS    := -L$(GENDIR)/lib -L$(GENDIR)/buildsdks/private/lib -lloadseg $(addprefix -l,$(USELIBS))
 DEPLIBS := $(addprefix $(AROS_LIB)/lib,$(addsuffix .a,$(USELIBS)))
 
 # Force rebuilding to get current date strings
