@@ -15,6 +15,44 @@ void writeincdefines(struct config *cfg)
     char line[256], *banner;
     struct functionhead *funclistit;
 
+    snprintf(line, 255, "%s/defines/%s_LVO.h", cfg->gendir, cfg->includename);
+    out = fopen(line, "w");
+
+    if (out == NULL)
+    {
+        perror(line);
+        exit(20);
+    }
+
+    banner = getBanner(cfg);
+    fprintf(out,
+            "#ifndef DEFINES_LVO_%s_H\n"
+            "#define DEFINES_LVO_%s_H\n"
+            "\n"
+            "%s"
+            "\n"
+            "/*\n"
+            "    Desc: Function LVO's for %s\n"
+            "*/\n"
+            "\n",
+            cfg->includenameupper, cfg->includenameupper, banner, cfg->modulename
+    );
+
+    for (funclistit = cfg->funclist; funclistit!=NULL; funclistit = funclistit->next)
+    {
+        if (!funclistit->priv)
+        {
+            fprintf(out, "#define LVO%s          %u\n", funclistit->name, funclistit->lvo);
+        }
+    }
+
+    fprintf(out,
+            "\n"
+            "#endif /* DEFINES_LVO_%s_H*/\n",
+            cfg->includenameupper
+    );
+    fclose(out);
+
     snprintf(line, 255, "%s/defines/%s.h", cfg->gendir, cfg->includename);
     out = fopen(line, "w");
 
