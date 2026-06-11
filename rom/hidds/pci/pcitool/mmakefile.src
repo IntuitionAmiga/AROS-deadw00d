@@ -6,7 +6,7 @@ FILES = main pciids support locale saveinfo
 EXEDIR = $(AROS_TOOLS)/Hardware
 
 #MM- debug-tools : debug-tools-pcitool
-#MM debug-tools-pcitool : includes symlinks \
+#MM debug-tools-pcitool : includes symlinks kernel-hidd-pci-includes \
 #MM debug-tools-pcitool-catalogs
 
 
