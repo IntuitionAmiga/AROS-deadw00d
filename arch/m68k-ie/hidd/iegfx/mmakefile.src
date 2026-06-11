@@ -15,4 +15,4 @@ IEGFX_HIDD_SOURCES := \
 
 %build_module mmake=hidd-m68k-iegfx \
   modname=iegfx modtype=hidd \
-  files=$(IEGFX_HIDD_SOURCES)
+  files=$(IEGFX_HIDD_SOURCES) usesdks="private config"
