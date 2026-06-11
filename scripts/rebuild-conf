@@ -13,6 +13,8 @@ show_selection ()
     printf "    16) core-amiga-m68k-classic (SERIAL DEBUG)\n"
     printf "    21) toolchain-core-armhf\n"
     printf "    22) core-linux-armhf (DEBUG)\n"
+    printf "    31) toolchain-core-ie-m68k\n"
+    printf "    32) core-ie-m68k (Intuition Engine ROM)\n"
 }
 
 process_selection ()
@@ -105,6 +107,21 @@ process_selection ()
         BUILD_DIR=$(pwd)/core-linux-armhf-d
         CONFIGURE_TARGET=linux-armhf
         CONFIGURE_OPTS="--with-aros-toolchain=yes --enable-debug"
+        ;;
+        31)
+        TOOLCHAIN_DIR=$(pwd)/toolchain-core-ie-m68k
+        BUILD_DIR=$(pwd)/toolchain-core-ie-m68k-build
+        TOOLCHAIN_BUILD=yes
+        CONFIGURE_TARGET=ie-m68k
+        CONFIGURE_OPTS="--with-cpu=68020 --with-gcc-version=15.2.0"
+        MAKE_TARGET="-s crosstools"
+        ;;
+        32)
+        TOOLCHAIN_DIR=$(pwd)/toolchain-core-ie-m68k
+        BUILD_DIR=$(pwd)/core-ie-m68k
+        CONFIGURE_TARGET=ie-m68k
+        CONFIGURE_OPTS="--with-aros-toolchain=yes --with-cpu=68020 --with-gcc-version=15.2.0"
+        MAKE_TARGET="kernel-ie-m68k-rom"
         ;;
     esac
 }
