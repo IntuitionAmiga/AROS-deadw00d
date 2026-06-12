@@ -195,7 +195,7 @@ const static struct def_ulval DefULValues[] = {
     {MUICFG_Window_Spacing_Bottom, 3},
     {MUICFG_Window_Positions, WINDOW_POSITION_FORGET_ON_EXIT},
     {MUICFG_Window_Redraw, WINDOW_REDRAW_WITHOUT_CLEAR},
-    {MUICFG_Window_Refresh, WINDOW_REFRESH_SIMPLE},
+    {MUICFG_Window_Refresh, WINDOW_REFRESH_SMART},
     {MUICFG_Radio_HSpacing, 4},
     {MUICFG_Radio_VSpacing, 1},
     {MUICFG_Group_HSpacing, 6},
