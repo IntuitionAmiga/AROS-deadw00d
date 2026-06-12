@@ -18,13 +18,6 @@
 #include "mui.h"
 #include "imspec_intern.h"
 #include "support.h"
-
-#ifdef __mc68000__
-#include <libraries/iewarp.h>
-#include <ie_hwreg.h>
-static struct Library *IEWarpBase = NULL;
-#include <iewarp_consumer.h>
-#endif
 #define MYDEBUG 1
 #include "debug.h"
 
@@ -79,34 +72,6 @@ STATIC VOID TrueDitherV
 
     LONG y, offset_y = y1 - oy1;
 
-#ifdef __mc68000__
-    /* IE64 coprocessor gradient fill — renders entire gradient in one dispatch */
-    if (width * (y2 - y1 + 1) >= 1024)
-    {
-        struct BitMap *bm = rp->BitMap;
-        if (bm && bm->Planes[0] && IEWARP_OPEN())
-        {
-            ULONG startColor = (start_rgb[0] << 16) | (start_rgb[1] << 8) | start_rgb[2];
-            ULONG endColor = (end_rgb[0] << 16) | (end_rgb[1] << 8) | end_rgb[2];
-            APTR dst = (APTR)((ULONG)bm->Planes[0] +
-                        y1 * bm->BytesPerRow + x1 * 4);
-
-            IEWarpSetCaller(IEWARP_CALLER_MUI);
-            {
-                ULONG ticket = IEWarpGradientFill(
-                    dst, (UWORD)width, (UWORD)(y2 - y1 + 1),
-                    (UWORD)bm->BytesPerRow, startColor, endColor,
-                    WARP_GRADIENT_VERTICAL);
-                if (ticket)
-                {
-                    IEWarpWait(ticket);
-                    return;
-                }
-            }
-        }
-    }
-#endif
-
     LONG red =
         ((1 << SHIFT) >> 1) + (start_rgb[0] << SHIFT) + offset_y * step_r;
     LONG green =
@@ -132,7 +97,6 @@ STATIC VOID TrueDitherH
     WORD ox1, WORD ox2, ULONG *start_rgb, ULONG *end_rgb)
 {
     LONG max_delta_x = (ox2 - ox1 > 0) ? ox2 - ox1 : 1;
-    LONG width = x2 - x1 + 1;
     LONG height = y2 - y1 + 1;
 
     LONG delta_r = end_rgb[0] - start_rgb[0];
@@ -144,34 +108,6 @@ STATIC VOID TrueDitherH
     LONG step_b = (delta_b << SHIFT) / max_delta_x;
 
     LONG x, offset_x = x1 - ox1;
-
-#ifdef __mc68000__
-    /* IE64 coprocessor horizontal gradient fill */
-    if (width * height >= 1024)
-    {
-        struct BitMap *bm = rp->BitMap;
-        if (bm && bm->Planes[0] && IEWARP_OPEN())
-        {
-            ULONG startColor = (start_rgb[0] << 16) | (start_rgb[1] << 8) | start_rgb[2];
-            ULONG endColor = (end_rgb[0] << 16) | (end_rgb[1] << 8) | end_rgb[2];
-            APTR dst = (APTR)((ULONG)bm->Planes[0] +
-                        y1 * bm->BytesPerRow + x1 * 4);
-
-            IEWarpSetCaller(IEWARP_CALLER_MUI);
-            {
-                ULONG ticket = IEWarpGradientFill(
-                    dst, (UWORD)width, (UWORD)height,
-                    (UWORD)bm->BytesPerRow, startColor, endColor,
-                    WARP_GRADIENT_HORIZONTAL);
-                if (ticket)
-                {
-                    IEWarpWait(ticket);
-                    return;
-                }
-            }
-        }
-    }
-#endif
 
     /* 1 << (SHIFT - 1) is 0.5 in fixed point math. We add it to the variable
        so that, at the moment in which the variable is converted to integer,

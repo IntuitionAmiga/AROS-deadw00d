@@ -13,13 +13,6 @@
 #include "cybergraphics_intern.h"
 #include "processpixelarray_ops.h"
 
-#ifdef __mc68000__
-#include <libraries/iewarp.h>
-#include <ie_hwreg.h>
-static struct Library *IEWarpBase = NULL;
-#include <iewarp_consumer.h>
-#endif
-
 /*****************************************************************************
 
     NAME */
@@ -97,32 +90,6 @@ static struct Library *IEWarpBase = NULL;
     opRect.MinY = destY;
     opRect.MaxX = opRect.MinX + sizeX - 1;
     opRect.MaxY = opRect.MinY + sizeY - 1;
-
-#ifdef __mc68000__
-    /* IE64 coprocessor acceleration for large pixel processing operations */
-    if (sizeX * sizeY >= 1024 &&
-        operation != POP_GRADIENT && operation != POP_BLUR &&
-        IEWARP_OPEN())
-    {
-        struct BitMap *bm = rp->BitMap;
-        if (bm && bm->Planes[0])
-        {
-            APTR data = (APTR)((ULONG)bm->Planes[0] +
-                        destY * bm->BytesPerRow + destX * 4);
-            IEWarpSetCaller(IEWARP_CALLER_CGFX);
-            {
-                ULONG ticket = IEWarpPixelProcess(
-                    data, (UWORD)sizeX, (UWORD)sizeY,
-                    (UWORD)bm->BytesPerRow, operation, (ULONG)value);
-                if (ticket)
-                {
-                    IEWarpWait(ticket);
-                    return;
-                }
-            }
-        }
-    }
-#endif
 
     switch (operation)
     {

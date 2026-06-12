@@ -268,7 +268,6 @@ static BOOL ReadRGBPic(Class *cl, Object *o, struct IFFHandle *handle, struct Bi
                     srclinestart = uncompressed;
                 }
                 r = g = b = 0;
-                {
                 maskptr = (UBYTE *) bitmask;
                 for(x = 0; x < width; x++)
                 {
@@ -325,7 +324,6 @@ static BOOL ReadRGBPic(Class *cl, Object *o, struct IFFHandle *handle, struct Bi
                         *chunky++ = (rgb >> 8) & 0xff;
                         *chunky++ = (rgb >> 16) & 0xff;
                     }
-                }
                 }
                 
                 if( !DoSuperMethod(cl, o,

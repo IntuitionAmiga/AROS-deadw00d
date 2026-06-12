@@ -26,20 +26,10 @@
 #include <string.h>
 
 #include <ie_hwreg.h>
-#ifdef __mc68000__
-#include <libraries/iewarp.h>
-
-static struct Library *IEWarpBase = NULL;
-#include <iewarp_consumer.h>
-#endif
-
 #include "iegfx_bitmap.h"
 #include "iegfx_hidd.h"
 
 #include LC_LIBDEFS_FILE
-
-/* Coprocessor warp dispatch threshold (bytes) */
-#define WARP_THRESHOLD 4096
 
 /*
  * Byte-swap a 32bpp HIDDT_Pixel for the IE blitter's BLT_COLOR register.
@@ -64,60 +54,6 @@ static inline ULONG ie_blt_color(ULONG pixel, UBYTE bpp)
            ((pixel & 0x00FF0000UL) >> 8)  |
            ((pixel & 0xFF000000UL) >> 24);
 }
-
-#ifdef __mc68000__
-/*
- * Dispatch a fill or copy operation to the IE64 coprocessor via MMIO.
- * Returns TRUE if dispatched and completed, FALSE if caller should fallback.
- */
-static BOOL IE_WarpDoFillRect(ULONG dst, UWORD w, UWORD h, UWORD stride,
-                              ULONG color, UBYTE bpp)
-{
-    ULONG size = (ULONG)w * (ULONG)h * (ULONG)bpp;
-    if (size < WARP_THRESHOLD)
-        return FALSE;
-
-    if (!IEWARP_OPEN())
-        return FALSE;
-
-    IEWarpSetCaller(IEWARP_CALLER_IEGFX);
-    {
-        ULONG ticket = IEWarpFillRect(
-            (APTR)dst, (UWORD)(w * bpp), h, stride, color);
-        if (ticket)
-        {
-            IEWarpWait(ticket);
-            return TRUE;
-        }
-    }
-    return FALSE;
-}
-
-static BOOL IE_WarpDoBlitCopy(ULONG src, ULONG dst, UWORD w, UWORD h,
-                              UWORD src_stride, UWORD dst_stride, UBYTE bpp)
-{
-    ULONG size = (ULONG)w * (ULONG)h * (ULONG)bpp;
-    if (size < WARP_THRESHOLD)
-        return FALSE;
-
-    if (!IEWARP_OPEN())
-        return FALSE;
-
-    IEWarpSetCaller(IEWARP_CALLER_IEGFX);
-    {
-        ULONG ticket = IEWarpBlitCopy(
-            (APTR)src, (APTR)dst,
-            (UWORD)(w * bpp), h,
-            src_stride, dst_stride, 0xC0);
-        if (ticket)
-        {
-            IEWarpWait(ticket);
-            return TRUE;
-        }
-    }
-    return FALSE;
-}
-#endif
 
 /*********** BitMap::New() *************************************/
 
@@ -209,25 +145,7 @@ OOP_Object *METHOD(IEBitMap, Root, New)
         /* Clear the framebuffer */
         {
             ULONG clearSize = data->bytesperline * data->height;
-#ifdef __mc68000__
-            BOOL cleared = FALSE;
-
-            if (clearSize >= WARP_THRESHOLD && IEWARP_OPEN())
-            {
-                IEWarpSetCaller(IEWARP_CALLER_IEGFX);
-                {
-                    ULONG ticket = IEWarpMemSet(data->VideoData, 0, clearSize);
-                    if (ticket)
-                    {
-                        IEWarpWait(ticket);
-                        cleared = TRUE;
-                    }
-                }
-            }
-
-            if (!cleared)
-#endif
-                memset(data->VideoData, 0, clearSize);
+            memset(data->VideoData, 0, clearSize);
         }
 
         /* Tell ChunkyBM superclass where to draw */
@@ -360,14 +278,6 @@ VOID METHOD(IEBitMap, Hidd_BitMap, FillRect)
                     msg->minY * data->bytesperline +
                     msg->minX * data->bytesperpix;
 
-        /* Try coprocessor for large Copy-mode fills */
-#ifdef __mc68000__
-        if (mode == vHidd_GC_DrawMode_Copy &&
-            IE_WarpDoFillRect(dst, w, h, data->bytesperline,
-                            fg, data->bytesperpix))
-            return;
-#endif
-
         {
             ULONG bpp_flag = (data->bytesperpix == 1) ?
                 IE_BLT_FLAGS_BPP_CLUT8 : IE_BLT_FLAGS_BPP_RGBA32;
@@ -390,13 +300,6 @@ VOID METHOD(IEBitMap, Hidd_BitMap, Clear)
 
     {
         ULONG dst = (ULONG)data->VideoData;
-
-        /* Full bitmap clear — always qualifies for coprocessor */
-#ifdef __mc68000__
-        if (IE_WarpDoFillRect(dst, data->width, data->height,
-                            data->bytesperline, bg, data->bytesperpix))
-            return;
-#endif
 
         {
             ULONG bpp_flag = (data->bytesperpix == 1) ?
@@ -471,41 +374,6 @@ VOID METHOD(IEBitMap, Hidd_BitMap, PutAlphaTemplate)
     D(bug("[IEBitMap] PutAlphaTemplate(%d,%d %dx%d)\n",
           msg->x, msg->y, msg->width, msg->height));
 
-    /* Only accelerate RGBA32 bitmaps */
-    if (data->bytesperpix != 4)
-    {
-        OOP_DoSuperMethod(cl, o, (OOP_Msg)msg);
-        return;
-    }
-
-    {
-        ULONG size = (ULONG)msg->width * (ULONG)msg->height;
-        ULONG fg = GC_FG(msg->gc);
-        ULONG dst = (ULONG)data->VideoData +
-                    msg->y * data->bytesperline +
-                    msg->x * data->bytesperpix;
-
-        /* Try iewarp.library for large alpha blits */
-#ifdef __mc68000__
-        if (size >= WARP_THRESHOLD && IEWARP_OPEN())
-        {
-            IEWarpSetCaller(IEWARP_CALLER_IEGFX);
-            {
-                ULONG ticket = IEWarpBlitAlpha(
-                    (APTR)msg->alpha, (APTR)dst,
-                    msg->width, msg->height,
-                    msg->modulo, data->bytesperline);
-                if (ticket)
-                {
-                    IEWarpWait(ticket);
-                    return;
-                }
-            }
-            /* Dispatch failed — fall through to superclass */
-        }
-#endif
-    }
-
     OOP_DoSuperMethod(cl, o, (OOP_Msg)msg);
 }
 
@@ -534,14 +402,6 @@ VOID METHOD(IEBitMap, Hidd_BitMap, PutImage)
                     msg->y * data->bytesperline +
                     msg->x * data->bytesperpix;
 
-        /* Try coprocessor for large images */
-#ifdef __mc68000__
-        if (IE_WarpDoBlitCopy(src, dst, msg->width, msg->height,
-                            msg->modulo, data->bytesperline,
-                            data->bytesperpix))
-            return;
-#endif
-
         {
             ULONG bpp_flag = (data->bytesperpix == 1) ?
                 IE_BLT_FLAGS_BPP_CLUT8 : IE_BLT_FLAGS_BPP_RGBA32;
@@ -561,13 +421,6 @@ VOID METHOD(IEBitMap, Hidd_BitMap, PutImage)
                     msg->y * data->bytesperline +
                     msg->x * data->bytesperpix;
 
-        /* Try coprocessor for large images */
-#ifdef __mc68000__
-        if (IE_WarpDoBlitCopy(src, dst, msg->width, msg->height,
-                            msg->modulo, data->bytesperline, 4))
-            return;
-#endif
-
         {
             ULONG flags = IE_BLT_MAKE_FLAGS(IE_BLT_FLAGS_BPP_RGBA32,
                                              vHidd_GC_DrawMode_Copy);
@@ -577,50 +430,6 @@ VOID METHOD(IEBitMap, Hidd_BitMap, PutImage)
         }
         return;
     }
-
-    /* Try IE64 format conversion for known 32-bit and 24-bit formats → RGBA32 */
-#ifdef __mc68000__
-    if (data->bytesperpix == 4)
-    {
-        ULONG warpSrcFmt = 0;
-
-        switch (msg->pixFmt)
-        {
-        case vHidd_StdPixFmt_ARGB32: warpSrcFmt = WARP_PIXFMT_ARGB32; break;
-        case vHidd_StdPixFmt_BGRA32: warpSrcFmt = WARP_PIXFMT_BGRA32; break;
-        case vHidd_StdPixFmt_ABGR32: warpSrcFmt = WARP_PIXFMT_ABGR32; break;
-        case vHidd_StdPixFmt_RGB24:  warpSrcFmt = WARP_PIXFMT_RGB24;  break;
-        case vHidd_StdPixFmt_BGR24:  warpSrcFmt = WARP_PIXFMT_BGR24;  break;
-        default: break;
-        }
-
-        if (warpSrcFmt)
-        {
-            ULONG size = (ULONG)msg->width * (ULONG)msg->height;
-
-            if (size >= WARP_THRESHOLD && IEWARP_OPEN())
-            {
-                ULONG dst = (ULONG)data->VideoData +
-                            msg->y * data->bytesperline +
-                            msg->x * data->bytesperpix;
-
-                IEWarpSetCaller(IEWARP_CALLER_IEGFX);
-                {
-                    ULONG ticket = IEWarpBlitConvert(
-                        (APTR)msg->pixels, (APTR)dst,
-                        msg->width, msg->height,
-                        warpSrcFmt, WARP_PIXFMT_RGBA32);
-                    if (ticket)
-                    {
-                        IEWarpWait(ticket);
-                        return;
-                    }
-                }
-                /* Dispatch failed — fall through to superclass */
-            }
-        }
-    }
-#endif
 
     /* Other pixel formats: fall back to superclass for conversion */
     OOP_DoSuperMethod(cl, o, (OOP_Msg)msg);

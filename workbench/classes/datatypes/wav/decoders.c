@@ -6,15 +6,6 @@
 #include "wave_class.h"
 #include "decoders.h"
 
-#ifdef __mc68000__
-#include <libraries/iewarp.h>
-#include <ie_hwreg.h>
-static struct Library *IEWarpBase = NULL;
-#include <iewarp_consumer.h>
-
-#define IE_AUDIO_DECODE_THRESHOLD 1024  /* minimum bytes for IE64 dispatch */
-#endif
-
 #include "wave_pcm.h"
 #include "wave_ima_adpcm.h"
 #include "wave_ms_adpcm.h"
@@ -60,28 +51,6 @@ DECODERPROTO(DecodeBlocks) {
 	frames_left = numFrames;
 	frames = data->blockFrames;
 	blocksize = fmt->blockAlign;
-
-#ifdef __mc68000__
-	/* IE64 accelerated bulk decode for large audio blocks */
-	{
-		LONG total_src_bytes = ((numFrames + frames - 1) / frames) * blocksize;
-		if (total_src_bytes >= IE_AUDIO_DECODE_THRESHOLD && IEWARP_OPEN())
-		{
-			IEWarpSetCaller(IEWARP_CALLER_DATATYPES);
-			{
-				ULONG ticket = IEWarpAudioDecode(
-					(APTR)Src, (APTR)Dst, (ULONG)total_src_bytes,
-					(UWORD)fmt->formatTag);
-				if (ticket)
-				{
-					IEWarpWait(ticket);
-					return numFrames;
-				}
-			}
-		}
-	}
-#endif
-
 	while (frames_left > 0) {
 		if (frames_left < frames) frames = frames_left;
 

@@ -13,13 +13,6 @@
 #include "icon_intern.h"
 #include "support_builtin.h"
 
-#ifdef __mc68000__
-#include <libraries/iewarp.h>
-#include <ie_hwreg.h>
-static struct Library *IEWarpBase = NULL;
-#include <iewarp_consumer.h>
-#endif
-
 /* Bitmap scaling */
 static BOOL scaleToResolution(ULONG SrcWidth, ULONG SrcHeight,
                    UWORD SrcResX, UWORD SrcResY,
@@ -620,26 +613,6 @@ static inline void ScaleLine(ULONG *Target, const ULONG *Source, int SrcWidth, i
 
 static void ScaleRect(ULONG *Target, const ULONG *Source, int SrcWidth, int SrcHeight, int TgtWidth, int TgtHeight)
 {
-#ifdef __mc68000__
-    /* Attempt IE64 coprocessor scale for large images */
-    if ((ULONG)SrcWidth * SrcHeight * 4 >= 4096 && IEWARP_OPEN())
-    {
-        IEWarpSetCaller(IEWARP_CALLER_ICON);
-        {
-            ULONG ticket = IEWarpBlitScale(
-                (APTR)Source, (APTR)Target,
-                (UWORD)SrcWidth, (UWORD)SrcHeight,
-                (UWORD)TgtWidth, (UWORD)TgtHeight,
-                (UWORD)(SrcWidth * 4), (UWORD)(TgtWidth * 4));
-            if (ticket)
-            {
-                IEWarpWait(ticket);
-                return;
-            }
-        }
-    }
-#endif
-
     int NumPixels = TgtHeight;
     int IntPart = (SrcHeight / TgtHeight) * SrcWidth;
     int FractPart = SrcHeight % TgtHeight;

@@ -171,13 +171,11 @@ static ULONG RenderHook(struct render_data *data, LONG srcx, LONG srcy,
 
     bppix = GetRectFmtBytesPerPixel(srcformat, rp, CyberGfxBase);
     start_offset = ((ULONG)srcy) * srcmod + srcx * bppix;
-
-
     data.array = ((UBYTE *)src) + start_offset;
     data.pixfmt = GetHIDDRectFmt(srcformat, rp, CyberGfxBase);
     data.modulo = srcmod;
     data.bppix = bppix;
-
+    
     rr.MinX = destx;
     rr.MinY = desty;
     rr.MaxX = destx + width  - 1;
