@@ -346,6 +346,53 @@ BOOL METHOD(IEGfx, Hidd_Gfx, CopyBoxMasked)
           msg->srcX, msg->srcY, msg->destX, msg->destY,
           msg->width, msg->height));
 
+    /* Hardware masked blit when both bitmaps are ours, RGBA32, mask
+     * given and the GC asks for a plain Copy. Other draw modes (Or,
+     * AndInverted, ...) have masked semantics the blitter does not
+     * implement, so they take the superclass path. */
+    if (OOP_OCLASS(msg->src) == XSD(cl)->bmclass &&
+        OOP_OCLASS(msg->dest) == XSD(cl)->bmclass &&
+        msg->mask != NULL && msg->width > 0 && msg->height > 0 &&
+        (!msg->gc || GC_DRMD(msg->gc) == vHidd_GC_DrawMode_Copy))
+    {
+        struct IEGfxBitmapData *bm_src = OOP_INST_DATA(OOP_OCLASS(msg->src), msg->src);
+        struct IEGfxBitmapData *bm_dst = OOP_INST_DATA(OOP_OCLASS(msg->dest), msg->dest);
+
+        if (bm_src->bytesperpix == 4 && bm_dst->bytesperpix == 4)
+        {
+            ULONG src_off = (ULONG)bm_src->VideoData +
+                            msg->srcY * bm_src->bytesperline +
+                            msg->srcX * bm_src->bytesperpix;
+            ULONG dst_off = (ULONG)bm_dst->VideoData +
+                            msg->destY * bm_dst->bytesperline +
+                            msg->destX * bm_dst->bytesperpix;
+            /* The mask is a PLANEPTR laid out for the FULL source bitmap
+             * width (rounded up to the bitmap alignment), indexed by
+             * srcX/srcY; it is not repacked to the copied rectangle.
+             * Mirror the superclass mask_bpr computation. */
+            IPTR mask_width = 0, mask_align = 0;
+            UWORD mask_stride;
+            ULONG mask_row;
+
+            OOP_GetAttr(msg->src, aHidd_BitMap_Width, &mask_width);
+            OOP_GetAttr(msg->src, aHidd_BitMap_Align, &mask_align);
+            if (mask_align == 0)
+                mask_align = 16;
+            mask_align--;
+            mask_stride = (UWORD)(((mask_width + mask_align) & ~mask_align) >> 3);
+            mask_row = (ULONG)msg->mask + (ULONG)msg->srcY * mask_stride;
+
+            IE_BlitMaskedCopy(src_off, dst_off,
+                              msg->width, msg->height,
+                              bm_src->bytesperline, bm_dst->bytesperline,
+                              mask_row, mask_stride, (UWORD)msg->srcX,
+                              IE_BLT_FLAGS_MASK_MSB |
+                              IE_BLT_MAKE_FLAGS(IE_BLT_FLAGS_BPP_RGBA32,
+                                                vHidd_GC_DrawMode_Copy));
+            return TRUE;
+        }
+    }
+
     return (BOOL)OOP_DoSuperMethod(cl, o, (OOP_Msg)msg);
 }
 
@@ -364,7 +411,8 @@ OOP_Object *METHOD(IEGfx, Hidd_Gfx, Show)
         D(bug("[IEGfx] Showing bitmap at VideoData=%p (%ldx%ld, %d bpp)\n",
               bmdata->VideoData, bmdata->width, bmdata->height, bmdata->bytesperpix));
 
-        /* Set framebuffer base to this bitmap's VRAM address */
+        /* Swap framebuffer base at vertical blank for a tear-free flip */
+        IE_WaitVBlank();
         IE_SetFBBase((ULONG)bmdata->VideoData);
 
         if (bmdata->CLUT)

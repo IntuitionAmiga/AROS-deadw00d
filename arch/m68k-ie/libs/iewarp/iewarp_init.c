@@ -1,7 +1,10 @@
 /*
     Copyright (C) 2026, The AROS Development Team. All rights reserved.
 
-    Desc: iewarp.library initialization — auto-starts IE64 worker on boot
+    Desc: iewarp.library initialization. The IE64 worker is started
+          lazily on the first OpenLibrary() and stopped again when the
+          last client closes, so no host-side worker runs unless an
+          application is actually using the library.
 */
 
 #include <aros/symbolsets.h>
@@ -32,8 +35,6 @@ static AROS_INTH1(coprocCompletionHandler, struct IEWarpBase *, base)
 
 static int IEWarp_Init(struct IEWarpBase *base)
 {
-    ULONG nameAddr;
-
     base->workerRunning = FALSE;
     base->threshold = 1024;  /* Default 1KB threshold, calibrated later */
     base->batchMode = FALSE;
@@ -94,6 +95,15 @@ static int IEWarp_Init(struct IEWarpBase *base)
         base->batchStats.currentBatchOps = 0;
         base->ringHighWater = 0;
     }
+
+    return TRUE;
+}
+
+/* Start the IE64 worker, calibrate the dispatch threshold and install
+ * the completion interrupt. Called on the first OpenLibrary(). */
+static int IEWarp_StartWorker(struct IEWarpBase *base)
+{
+    ULONG nameAddr;
 
     /* The service filename string is in ROM (static const).
      * Pass its bus address directly — the Go-side readFileName()
@@ -163,7 +173,7 @@ static int IEWarp_Init(struct IEWarpBase *base)
     return TRUE;
 }
 
-static int IEWarp_Expunge(struct IEWarpBase *base)
+static void IEWarp_StopWorker(struct IEWarpBase *base)
 {
     if (base->workerRunning)
     {
@@ -176,9 +186,35 @@ static int IEWarp_Expunge(struct IEWarpBase *base)
         ie_write32(IE_COPROC_CMD, IE_COPROC_CMD_STOP);
         base->workerRunning = FALSE;
     }
+}
 
+static int IEWarp_Open(struct IEWarpBase *base)
+{
+    if (!base->workerRunning)
+        IEWarp_StartWorker(base);
+    /* Open succeeds even if the worker failed to start: every dispatch
+     * function returns ticket 0 (M68K fallback) when workerRunning is
+     * FALSE, so callers degrade gracefully. */
+    return TRUE;
+}
+
+static int IEWarp_Close(struct IEWarpBase *base)
+{
+    /* Stop the worker when the last client closes. Depending on
+     * genmodule ordering lib_OpenCnt is either 1 (about to drop to 0)
+     * or already 0 here, so accept both. */
+    if (base->lib.lib_OpenCnt <= 1)
+        IEWarp_StopWorker(base);
+    return TRUE;
+}
+
+static int IEWarp_Expunge(struct IEWarpBase *base)
+{
+    IEWarp_StopWorker(base);
     return TRUE;
 }
 
 ADD2INITLIB(IEWarp_Init, 0)
+ADD2OPENLIB(IEWarp_Open, 0)
+ADD2CLOSELIB(IEWarp_Close, 0)
 ADD2EXPUNGELIB(IEWarp_Expunge, 0)

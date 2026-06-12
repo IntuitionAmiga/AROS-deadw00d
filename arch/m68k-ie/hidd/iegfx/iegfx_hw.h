@@ -25,10 +25,12 @@
 #define IE_BLT_OP_ALPHA_COPY    4
 #define IE_BLT_OP_MODE7         5
 #define IE_BLT_OP_COLOR_EXPAND  6
+#define IE_BLT_OP_SCALE         7
 
 /* Blitter control bits */
 #define IE_BLT_CTRL_START       (1 << 0)
 #define IE_BLT_CTRL_BUSY        (1 << 1)
+#define IE_BLT_CTRL_IRQEN       (1 << 2)
 
 /* VideoChip control bits */
 #define IE_VIDEO_CTRL_ENABLE    (1 << 0)
@@ -63,5 +65,26 @@ void IE_BlitColorExpand(ULONG mask, ULONG dst, UWORD w, UWORD h,
                         ULONG fg, ULONG bg, ULONG flags);
 void IE_BlitLineEx(ULONG dst, UWORD dst_stride, WORD x0, WORD y0,
                    WORD x1, WORD y1, ULONG color, ULONG flags);
+
+/* Extended blitter/video operations */
+void IE_BlitMaskedCopy(ULONG src, ULONG dst, UWORD w, UWORD h,
+                       UWORD src_stride, UWORD dst_stride,
+                       ULONG mask, UWORD mask_stride, UWORD mask_srcx,
+                       ULONG flags);
+void IE_BlitAlphaTemplate(ULONG alpha, ULONG dst, UWORD w, UWORD h,
+                          UWORD alpha_stride, UWORD dst_stride,
+                          ULONG fg, ULONG flags);
+void IE_BlitScale(ULONG src, ULONG dst, UWORD src_w, UWORD src_h,
+                  UWORD dst_w, UWORD dst_h,
+                  UWORD src_stride, UWORD dst_stride, ULONG flags);
+void IE_BlitMode7(ULONG src, ULONG dst, UWORD w, UWORD h,
+                  UWORD dst_stride,
+                  LONG u0, LONG v0, LONG du_col, LONG dv_col,
+                  LONG du_row, LONG dv_row,
+                  UWORD tex_w_mask, UWORD tex_h_mask, ULONG flags);
+void IE_WaitVBlank(void);
+void IE_CopperLoad(ULONG listaddr);
+void IE_CopperStop(void);
+
 
 #endif /* IEGFX_HW_H */

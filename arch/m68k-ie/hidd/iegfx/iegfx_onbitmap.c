@@ -18,6 +18,7 @@
 #include <exec/lists.h>
 #include <graphics/rastport.h>
 #include <graphics/gfx.h>
+#include <graphics/scale.h>
 #include <hidd/hidd.h>
 #include <hidd/gfx.h>
 #include <oop/oop.h>
@@ -373,6 +374,72 @@ VOID METHOD(IEBitMap, Hidd_BitMap, PutAlphaTemplate)
 
     D(bug("[IEBitMap] PutAlphaTemplate(%d,%d %dx%d)\n",
           msg->x, msg->y, msg->width, msg->height));
+
+    /* Hardware alpha blend only for the JAM1 source-over case the
+     * blitter implements: transparent colour expansion, Copy draw mode,
+     * non-inverted alpha, RGBA32 destination. JAM2 (FG/BG without
+     * destination read) and Invert mode fall back to the superclass. */
+    if (data->bytesperpix == 4 && !msg->invertalpha &&
+        GC_COLEXP(msg->gc) == vHidd_GC_ColExp_Transparent &&
+        GC_DRMD(msg->gc) == vHidd_GC_DrawMode_Copy &&
+        msg->width > 0 && msg->height > 0)
+    {
+        ULONG fg = GC_FG(msg->gc);
+        ULONG dst = (ULONG)data->VideoData +
+                    msg->y * data->bytesperline +
+                    msg->x * data->bytesperpix;
+
+        IE_BlitAlphaTemplate((ULONG)msg->alpha, dst,
+                             msg->width, msg->height,
+                             (UWORD)msg->modulo, data->bytesperline,
+                             ie_blt_color(fg, 4),
+                             IE_BLT_MAKE_FLAGS(IE_BLT_FLAGS_BPP_RGBA32,
+                                               vHidd_GC_DrawMode_Copy));
+        return;
+    }
+
+    OOP_DoSuperMethod(cl, o, (OOP_Msg)msg);
+}
+
+/*********** BitMap::BitMapScale() *****************************/
+
+VOID METHOD(IEBitMap, Hidd_BitMap, BitMapScale)
+{
+    /* Hardware nearest-neighbour scale when both bitmaps are ours,
+     * RGBA32, and the GC requests a plain Copy with a full colour
+     * mask (the superclass scaler routes rows through PutImage with
+     * the GC applied, so other modes must take that path). */
+    if (msg->src && msg->dst && msg->bsa &&
+        OOP_OCLASS(msg->src) == OOP_OCLASS(o) &&
+        OOP_OCLASS(msg->dst) == OOP_OCLASS(o) &&
+        (!msg->gc ||
+         (GC_DRMD(msg->gc) == vHidd_GC_DrawMode_Copy &&
+          GC_COLMASK(msg->gc) == (HIDDT_Pixel)~0)))
+    {
+        struct IEGfxBitmapData *bm_src = OOP_INST_DATA(cl, msg->src);
+        struct IEGfxBitmapData *bm_dst = OOP_INST_DATA(cl, msg->dst);
+        struct BitScaleArgs *bsa = msg->bsa;
+
+        if (bm_src->bytesperpix == 4 && bm_dst->bytesperpix == 4 &&
+            bsa->bsa_SrcWidth > 0 && bsa->bsa_SrcHeight > 0 &&
+            bsa->bsa_DestWidth > 0 && bsa->bsa_DestHeight > 0)
+        {
+            ULONG src_off = (ULONG)bm_src->VideoData +
+                            bsa->bsa_SrcY * bm_src->bytesperline +
+                            bsa->bsa_SrcX * bm_src->bytesperpix;
+            ULONG dst_off = (ULONG)bm_dst->VideoData +
+                            bsa->bsa_DestY * bm_dst->bytesperline +
+                            bsa->bsa_DestX * bm_dst->bytesperpix;
+
+            IE_BlitScale(src_off, dst_off,
+                         bsa->bsa_SrcWidth, bsa->bsa_SrcHeight,
+                         bsa->bsa_DestWidth, bsa->bsa_DestHeight,
+                         bm_src->bytesperline, bm_dst->bytesperline,
+                         IE_BLT_MAKE_FLAGS(IE_BLT_FLAGS_BPP_RGBA32,
+                                           vHidd_GC_DrawMode_Copy));
+            return;
+        }
+    }
 
     OOP_DoSuperMethod(cl, o, (OOP_Msg)msg);
 }

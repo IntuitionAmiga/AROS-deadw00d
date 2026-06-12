@@ -88,6 +88,8 @@
 #define IE_BLT_FLAGS_JAM1        (1 << 8)   /* Template: skip BG pixels */
 #define IE_BLT_FLAGS_INVERT_TMPL (1 << 9)   /* Invert template bits */
 #define IE_BLT_FLAGS_INVERT_MODE (1 << 10)  /* XOR dst for set template bits */
+#define IE_BLT_FLAGS_MASK_MSB    (1 << 11)  /* Masked copy: sample mask MSB-first (PLANEPTR order) */
+#define IE_BLT_FLAGS_ALPHA_TMPL  (1 << 12)  /* Alpha copy: src is 8bpp alpha plane blended with BLT_FG */
 
 /* Helper to build BLT_FLAGS value */
 #define IE_BLT_MAKE_FLAGS(bpp, drawmode) \
