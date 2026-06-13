@@ -231,6 +231,15 @@
 #define IE_DOS_CMD_SET_PROTECT  21  /* ARG1=parent, ARG2=name, ARG3=bits */
 #define IE_DOS_CMD_EXAMINE_FH   22  /* ARG1=handle, ARG2=fib_ptr → fills FIB */
 #define IE_DOS_CMD_LOADSEG_SYMS 23  /* ARG1=name, ARG2=parent, ARG3=relocation base */
+#define IE_DOS_CMD_EXAMINE_ALL  24  /* ARG1=fixed request descriptor */
+
+/* IE_DOS_CMD_EXAMINE_ALL descriptor, five 32-bit big-endian fields. */
+#define IE_DOS_EXALL_DESC_LOCK_KEY    0
+#define IE_DOS_EXALL_DESC_BUFFER      4
+#define IE_DOS_EXALL_DESC_BUFFER_SIZE 8
+#define IE_DOS_EXALL_DESC_TYPE        12
+#define IE_DOS_EXALL_DESC_CONTROL     16
+#define IE_DOS_EXALL_DESC_SIZE        20
 
 /* ========================================================================
  * Coprocessor MMIO (0xF2340 - 0xF238F)

@@ -86,6 +86,7 @@ static char *BStr(BSTR bstr)
 /* Write a C string to guest memory at the given address for MMIO path arg.
  * Returns the address (unchanged). The Go side reads it via bus.Read8(). */
 static UBYTE name_buf[256];
+static ULONG exall_desc[IE_DOS_EXALL_DESC_SIZE / sizeof(ULONG)];
 static ULONG PrepareNameArg(const char *name)
 {
     ULONG i;
@@ -394,6 +395,30 @@ static SIPTR HandleExamineNext(struct DosPacket *pkt)
     ie_dos_set_arg1(lock_key);
     ie_dos_set_arg2((ULONG)fib);
     ie_dos_command(IE_DOS_CMD_EXNEXT);
+
+    if (ie_dos_result1() == 0) {
+        pkt->dp_Res2 = ie_dos_result2();
+        return DOSFALSE;
+    }
+    return DOSTRUE;
+}
+
+static SIPTR HandleExamineAll(struct DosPacket *pkt)
+{
+    struct FileLock *fl = (struct FileLock *)BADDR(pkt->dp_Arg1);
+    ULONG lock_key = 0;
+
+    if (fl)
+        lock_key = ((struct IELock *)fl->fl_Key)->key;
+
+    exall_desc[IE_DOS_EXALL_DESC_LOCK_KEY / sizeof(ULONG)] = lock_key;
+    exall_desc[IE_DOS_EXALL_DESC_BUFFER / sizeof(ULONG)] = (ULONG)pkt->dp_Arg2;
+    exall_desc[IE_DOS_EXALL_DESC_BUFFER_SIZE / sizeof(ULONG)] = (ULONG)pkt->dp_Arg3;
+    exall_desc[IE_DOS_EXALL_DESC_TYPE / sizeof(ULONG)] = (ULONG)pkt->dp_Arg4;
+    exall_desc[IE_DOS_EXALL_DESC_CONTROL / sizeof(ULONG)] = (ULONG)pkt->dp_Arg5;
+
+    ie_dos_set_arg1((ULONG)exall_desc);
+    ie_dos_command(IE_DOS_CMD_EXAMINE_ALL);
 
     if (ie_dos_result1() == 0) {
         pkt->dp_Res2 = ie_dos_result2();
@@ -838,6 +863,15 @@ LONG IEHandlerMain(struct ExecBase *sysBase)
             case ACTION_EXAMINE_FH:
                 res1 = HandleExamineFH(pkt);
                 res2 = pkt->dp_Res2;
+                break;
+
+            case ACTION_EXAMINE_ALL:
+                res1 = HandleExamineAll(pkt);
+                res2 = pkt->dp_Res2;
+                break;
+
+            case ACTION_EXAMINE_ALL_END:
+                res1 = DOSTRUE;
                 break;
 
             /* File operations */

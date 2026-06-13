@@ -919,6 +919,22 @@ LONG CONMain(struct ExecBase *SysBase)
                         replypkt(dp, DOSTRUE);
                     }
                     break;
+                case ACTION_EXAMINE_FH:
+                    {
+                        struct FileInfoBlock *fib = BADDR(dp->dp_Arg2);
+                        static const UBYTE name[] = "CONSOLE";
+
+                        DACTION(bug("[con:handler] ACTION_EXAMINE_FH\n"));
+                        SetMem(fib, 0, sizeof(*fib));
+                        fib->fib_DirEntryType = ST_FILE;
+                        fib->fib_EntryType = ST_FILE;
+                        fib->fib_FileName[0] = sizeof(name) - 1;
+                        CopyMem(name, &fib->fib_FileName[1], sizeof(name));
+                        fib->fib_Protection = FIBF_WRITE | FIBF_READ;
+                        DateStamp(&fib->fib_Date);
+                        replypkt(dp, DOSTRUE);
+                    }
+                    break;
                 case ACTION_SEEK:
                     /* Yes, DOSTRUE. Check Guru Book for details. */
                     DACTION(bug("[con:handler] ACTION_SEEK\n"));
