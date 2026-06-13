@@ -5,6 +5,7 @@ USER_INCLUDES := -I$(SRCDIR)/arch/$(CPU)-$(ARCH)/include -I$(SRCDIR)/workbench/d
 
 FILES := ie-audio-init ie-audio-main ie-audio-playslave
 
-%build_module mmake=kernel-ie-m68k-ahidrv \
-    modname=ie-audio modtype=library \
+%build_module_core mmake=kernel-ie-m68k-ahidrv \
+    modname=ie-audio modtype=library modsuffix=audio moduledir=Devs/AHI \
+    build_library=M build_abi= \
     files="$(FILES)"

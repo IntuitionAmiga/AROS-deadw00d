@@ -3,7 +3,7 @@
 
     Desc: IE AHI audio driver — slave process.
           The slave mixes AHI output and streams it through audio.device
-          with double-buffered ADCMD_WRITE requests. audio.device owns
+          with double-buffered CMD_WRITE requests. audio.device owns
           the DMA channels, the interrupt vectors and the pacing, so the
           AHI driver touches no audio hardware registers and cannot
           conflict with other audio.device clients.
@@ -12,6 +12,7 @@
 #include <devices/ahi.h>
 #include <devices/audio.h>
 #include <exec/execbase.h>
+#include <clib/alib_protos.h>
 #include <libraries/ahi_sub.h>
 
 #include "DriverData.h"
@@ -63,7 +64,7 @@ static void setup_write(struct IOAudio *io, struct IOAudio *tmpl,
 {
     *io = *tmpl;
     io->ioa_Request.io_Message.mn_ReplyPort = port;
-    io->ioa_Request.io_Command = ADCMD_WRITE;
+    io->ioa_Request.io_Command = CMD_WRITE;
     io->ioa_Request.io_Flags   = ADIOF_PERVOL;
     io->ioa_Request.io_Unit    = (struct Unit *)unitmask;
     io->ioa_Data               = (UBYTE *)buf;
@@ -86,6 +87,7 @@ Slave(struct ExecBase *SysBase)
     BYTE                   *chanbuf = NULL;
     ULONG                   chanbufsamples = 0;
     BOOL                    devopen = FALSE;
+    BOOL                    startupfailed = FALSE;
     static UBYTE            allocmasks[] = { 0x03, 0x05, 0x0A, 0x0C };
 
     AudioCtrl  = (struct AHIAudioCtrlDrv *)FindTask(NULL)->tc_UserData;
@@ -133,6 +135,7 @@ Slave(struct ExecBase *SysBase)
         bufR[1] = chanbuf + chanbufsamples * 3;
 
         /* Tell master we're alive */
+        dd->slavefailed = FALSE;
         Signal((struct Task *)dd->mastertask,
                1L << dd->mastersignal);
 
@@ -236,9 +239,8 @@ Slave(struct ExecBase *SysBase)
     }
     else
     {
-        /* Setup failed: report ready so AHI can shut us down cleanly. */
-        Signal((struct Task *)dd->mastertask,
-               1L << dd->mastersignal);
+        /* Report startup failure only after cleanup has completed. */
+        startupfailed = TRUE;
     }
 
     if (port)
@@ -250,9 +252,10 @@ Slave(struct ExecBase *SysBase)
     dd->slavesignal = -1;
 
     Forbid();
-
+    if (startupfailed)
+        dd->slavefailed = TRUE;
+    dd->slavetask = NULL;
     Signal((struct Task *)dd->mastertask,
            1L << dd->mastersignal);
-
-    dd->slavetask = NULL;
+    Permit();
 }

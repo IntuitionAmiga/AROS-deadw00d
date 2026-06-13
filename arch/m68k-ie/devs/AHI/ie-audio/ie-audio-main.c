@@ -25,6 +25,8 @@ extern const char LibName[];
 extern const char LibIDString[];
 
 void SlaveEntry(void);
+static void StopPlayback(struct AHIAudioCtrlDrv *AudioCtrl,
+                         struct IEAudioBase *IEAudioBase);
 
 /* IE SoundChip fixed at 44100 Hz */
 static const LONG frequencies[] = {
@@ -58,11 +60,14 @@ AROS_LH2(ULONG, AHIsub_AllocAudio,
         dd->mastersignal = AllocSignal(-1);
         dd->mastertask   = (struct Process *)FindTask(NULL);
         dd->ahisubbase   = IEAudioBase;
+        dd->slavefailed  = FALSE;
     } else {
         return AHISF_ERROR;
     }
 
     if (dd->mastersignal == -1) {
+        FreeVec(AudioCtrl->ahiac_DriverData);
+        AudioCtrl->ahiac_DriverData = NULL;
         return AHISF_ERROR;
     }
 
@@ -86,7 +91,9 @@ AROS_LH1(void, AHIsub_FreeAudio,
     AROS_LIBFUNC_INIT
 
     if (AudioCtrl->ahiac_DriverData != NULL) {
-        FreeSignal(dd->mastersignal);
+        StopPlayback(AudioCtrl, IEAudioBase);
+        if (dd->mastersignal != -1)
+            FreeSignal(dd->mastersignal);
         FreeVec(AudioCtrl->ahiac_DriverData);
         AudioCtrl->ahiac_DriverData = NULL;
     }
@@ -130,12 +137,16 @@ AROS_LH1(void, AHIsub_Enable,
 static void
 StopPlayback(struct AHIAudioCtrlDrv *AudioCtrl, struct IEAudioBase *IEAudioBase)
 {
+    if (AudioCtrl == NULL || AudioCtrl->ahiac_DriverData == NULL)
+        return;
+
     if (dd->slavetask != NULL) {
         if (dd->slavesignal != -1) {
             Signal((struct Task *)dd->slavetask,
                    1L << dd->slavesignal);
         }
-        Wait(1L << dd->mastersignal);
+        if (dd->mastersignal != -1)
+            Wait(1L << dd->mastersignal);
     }
     FreeVec(dd->mixbuffer);
     dd->mixbuffer = NULL;
@@ -165,6 +176,7 @@ AROS_LH2(ULONG, AHIsub_Start,
                                  MEMF_ANY | MEMF_PUBLIC);
 
         if (dd->mixbuffer == NULL) return AHIE_NOMEM;
+        dd->slavefailed = FALSE;
 
         Forbid();
 
@@ -179,10 +191,13 @@ AROS_LH2(ULONG, AHIsub_Start,
         if (dd->slavetask != NULL) {
             Wait(1L << dd->mastersignal);
 
-            if (dd->slavetask == NULL) {
+            if (dd->slavefailed || dd->slavetask == NULL) {
+                StopPlayback(AudioCtrl, IEAudioBase);
                 return AHIE_UNKNOWN;
             }
         } else {
+            FreeVec(dd->mixbuffer);
+            dd->mixbuffer = NULL;
             return AHIE_NOMEM;
         }
     }

@@ -27,7 +27,7 @@ struct IEAudioBase {
 
 struct IEAudioData {
     UBYTE           flags;
-    UBYTE           pad1;
+    UBYTE           slavefailed;
     BYTE            mastersignal;
     BYTE            slavesignal;
     struct Process *mastertask;
