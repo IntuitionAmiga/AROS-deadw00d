@@ -21,6 +21,14 @@ static int IEBSDSocket_Init(struct IEBSDSocketBase *base)
     base->sigIOMask = 0;
     base->sigUrgMask = 0;
     base->sigEventMask = 0;
+    base->dTableSize = IEBSD_DTABLE_SIZE;
+    base->fdCallback = 0;
+    base->logTag = 0;
+    base->logStat = 0;
+    base->logFacility = 0;
+    base->logMask = 0xff;
+    for (i = 0; i < IEBSD_DTABLE_SIZE; i++)
+        base->dTableUsed[i] = 0;
     base->inet_ntoa[0] = 0;
     base->hostName[0] = 0;
     base->hostAliases[0] = NULL;

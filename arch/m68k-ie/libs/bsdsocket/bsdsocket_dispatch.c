@@ -5,7 +5,7 @@
 */
 
 #include <aros/libcall.h>
-#include <proto/utility.h>
+#include <aros/asmcall.h>
 #include <bsdsocket/socketbasetags.h>
 #include <libraries/bsdsocket.h>
 
@@ -67,6 +67,155 @@ LONG ieb_socket_unsupported(struct IEBSDSocketBase *base)
     return ieb_socket_fail(base, EOPNOTSUPP);
 }
 
+static LONG ieb_fd_callback(struct IEBSDSocketBase *base, LONG fd, LONG action)
+{
+    if (!base->fdCallback)
+        return 0;
+
+    return AROS_UFC2(int, (APTR)base->fdCallback,
+        AROS_UFCA(int, fd, D0),
+        AROS_UFCA(int, action, D1));
+}
+
+static LONG ieb_socket_validate_fd(struct IEBSDSocketBase *base, LONG fd)
+{
+    if (fd < 0 || (ULONG)fd >= base->dTableSize)
+        return EBADF;
+    return 0;
+}
+
+static LONG ieb_socket_validate_active_fd(struct IEBSDSocketBase *base, LONG fd)
+{
+    LONG error;
+
+    if ((error = ieb_socket_validate_fd(base, fd)) != 0)
+        return error;
+    if (!base->dTableUsed[fd])
+        return EBADF;
+    return 0;
+}
+
+static LONG ieb_socket_close_host(struct IEBSDSocketBase *base, LONG s)
+{
+    struct IEBSDRequest req;
+    req_clear(&req);
+    req.a[IEBSD_REQ_S] = s;
+    return ieb_socket_call(base, IE_SOCK_CMD_CLOSE, &req);
+}
+
+static LONG ieb_socket_release_host(struct IEBSDSocketBase *base, LONG s, LONG id)
+{
+    struct IEBSDRequest req;
+    req_clear(&req);
+    req.a[IEBSD_REQ_S] = s;
+    req.a[IEBSD_REQ_AUX1] = id;
+    return ieb_socket_call(base, IE_SOCK_CMD_RELEASE, &req);
+}
+
+static LONG ieb_socket_release_copy_host(struct IEBSDSocketBase *base, LONG s, LONG id)
+{
+    struct IEBSDRequest req;
+    req_clear(&req);
+    req.a[IEBSD_REQ_S] = s;
+    req.a[IEBSD_REQ_AUX1] = id;
+    return ieb_socket_call(base, IE_SOCK_CMD_RELEASECOPY, &req);
+}
+
+static LONG ieb_socket_finish_alloc(struct IEBSDSocketBase *base, LONG fd)
+{
+    LONG error;
+
+    if (fd < 0)
+        return fd;
+
+    if ((error = ieb_socket_validate_fd(base, fd)) != 0)
+    {
+        ieb_socket_close_host(base, fd);
+        return ieb_socket_fail(base, error);
+    }
+
+    if ((error = ieb_fd_callback(base, fd, FDCB_ALLOC)) != 0)
+    {
+        ieb_socket_close_host(base, fd);
+        return ieb_socket_fail(base, error);
+    }
+
+    base->dTableUsed[fd] = TRUE;
+    return fd;
+}
+
+static LONG ieb_socket_finish_free(struct IEBSDSocketBase *base, LONG fd)
+{
+    LONG error;
+
+    if ((error = ieb_socket_validate_active_fd(base, fd)) != 0)
+        return ieb_socket_fail(base, error);
+
+    if ((error = ieb_fd_callback(base, fd, FDCB_FREE)) != 0)
+        return ieb_socket_fail(base, error);
+
+    base->dTableUsed[fd] = FALSE;
+    return ieb_socket_close_host(base, fd);
+}
+
+static LONG ieb_socket_finish_release(struct IEBSDSocketBase *base, LONG fd, LONG id)
+{
+    LONG error;
+    LONG releaseId;
+
+    if ((error = ieb_socket_validate_active_fd(base, fd)) != 0)
+        return ieb_socket_fail(base, error);
+
+    releaseId = ieb_socket_release_host(base, fd, id);
+    if (releaseId < 0)
+        return releaseId;
+
+    ieb_fd_callback(base, fd, FDCB_FREE);
+    base->dTableUsed[fd] = FALSE;
+    return releaseId;
+}
+
+static LONG ieb_socket_release_copy(struct IEBSDSocketBase *base, LONG fd, LONG id)
+{
+    LONG error;
+
+    if ((error = ieb_socket_validate_active_fd(base, fd)) != 0)
+        return ieb_socket_fail(base, error);
+
+    return ieb_socket_release_copy_host(base, fd, id);
+}
+
+static struct TagItem *ieb_next_tag_item(struct TagItem **tagList)
+{
+    struct TagItem *tag = tagList ? *tagList : NULL;
+
+    while (tag)
+    {
+        switch (tag->ti_Tag)
+        {
+            case TAG_DONE:
+                *tagList = tag;
+                return NULL;
+            case TAG_IGNORE:
+                tag++;
+                break;
+            case TAG_SKIP:
+                tag += tag->ti_Data + 1;
+                break;
+            case TAG_MORE:
+                tag = (struct TagItem *)tag->ti_Data;
+                break;
+            default:
+                *tagList = tag + 1;
+                return tag;
+        }
+    }
+
+    if (tagList)
+        *tagList = NULL;
+    return NULL;
+}
+
 AROS_LH3(int, socket,
     AROS_LHA(int, domain, D0),
     AROS_LHA(int, type, D1),
@@ -75,11 +224,13 @@ AROS_LH3(int, socket,
 {
     AROS_LIBFUNC_INIT
     struct IEBSDRequest req;
+    LONG fd;
     req_clear(&req);
     req.a[IEBSD_REQ_DOMAIN] = domain;
     req.a[IEBSD_REQ_TYPE] = type;
     req.a[IEBSD_REQ_PROTOCOL] = protocol;
-    return ieb_socket_call(SocketBase, IE_SOCK_CMD_SOCKET, &req);
+    fd = ieb_socket_call(SocketBase, IE_SOCK_CMD_SOCKET, &req);
+    return ieb_socket_finish_alloc(SocketBase, fd);
     AROS_LIBFUNC_EXIT
 }
 
@@ -128,7 +279,7 @@ AROS_LH3(int, accept,
     req.a[IEBSD_REQ_PTR1] = (ULONG)addr;
     req.a[IEBSD_REQ_PTR2] = (ULONG)addrlen;
     req.a[IEBSD_REQ_LEN1] = (addrlen != NULL) ? *addrlen : 0;
-    return ieb_socket_call(SocketBase, IE_SOCK_CMD_ACCEPT, &req);
+    return ieb_socket_finish_alloc(SocketBase, ieb_socket_call(SocketBase, IE_SOCK_CMD_ACCEPT, &req));
     AROS_LIBFUNC_EXIT
 }
 
@@ -351,10 +502,7 @@ AROS_LH1(int, CloseSocket,
     struct IEBSDSocketBase *, SocketBase, 20, BSDSocket)
 {
     AROS_LIBFUNC_INIT
-    struct IEBSDRequest req;
-    req_clear(&req);
-    req.a[IEBSD_REQ_S] = s;
-    return ieb_socket_call(SocketBase, IE_SOCK_CMD_CLOSE, &req);
+    return ieb_socket_finish_free(SocketBase, s);
     AROS_LIBFUNC_EXIT
 }
 
@@ -369,7 +517,7 @@ AROS_LH6(int, WaitSelect,
 {
     AROS_LIBFUNC_INIT
     struct IEBSDRequest req;
-    if (nfds < 0 || nfds > IEBSD_DTABLE_SIZE)
+    if (nfds < 0 || nfds > (int)SocketBase->dTableSize)
         return ieb_socket_fail(SocketBase, EINVAL);
     req_clear(&req);
     req.a[IEBSD_REQ_AUX1] = nfds;
@@ -399,7 +547,7 @@ AROS_LH0(int, getdtablesize,
     struct IEBSDSocketBase *, SocketBase, 23, BSDSocket)
 {
     AROS_LIBFUNC_INIT
-    return IEBSD_DTABLE_SIZE;
+    return SocketBase->dTableSize;
     AROS_LIBFUNC_EXIT
 }
 
@@ -411,7 +559,13 @@ AROS_LH4(LONG, ObtainSocket,
     struct IEBSDSocketBase *, SocketBase, 24, BSDSocket)
 {
     AROS_LIBFUNC_INIT
-    return ieb_socket_unsupported(SocketBase);
+    struct IEBSDRequest req;
+    req_clear(&req);
+    req.a[IEBSD_REQ_AUX1] = id;
+    req.a[IEBSD_REQ_DOMAIN] = domain;
+    req.a[IEBSD_REQ_TYPE] = type;
+    req.a[IEBSD_REQ_PROTOCOL] = protocol;
+    return ieb_socket_finish_alloc(SocketBase, ieb_socket_call(SocketBase, IE_SOCK_CMD_OBTAIN, &req));
     AROS_LIBFUNC_EXIT
 }
 
@@ -421,7 +575,7 @@ AROS_LH2(LONG, ReleaseSocket,
     struct IEBSDSocketBase *, SocketBase, 25, BSDSocket)
 {
     AROS_LIBFUNC_INIT
-    return ieb_socket_unsupported(SocketBase);
+    return ieb_socket_finish_release(SocketBase, sd, id);
     AROS_LIBFUNC_EXIT
 }
 
@@ -431,7 +585,7 @@ AROS_LH2(LONG, ReleaseCopyOfSocket,
     struct IEBSDSocketBase *, SocketBase, 26, BSDSocket)
 {
     AROS_LIBFUNC_INIT
-    return ieb_socket_unsupported(SocketBase);
+    return ieb_socket_release_copy(SocketBase, sd, id);
     AROS_LIBFUNC_EXIT
 }
 
@@ -590,10 +744,35 @@ AROS_LH2(int, Dup2Socket,
 {
     AROS_LIBFUNC_INIT
     struct IEBSDRequest req;
+    LONG error;
+    LONG newfd;
+
+    if (fd1 != -1 && (error = ieb_socket_validate_fd(SocketBase, fd1)) != 0)
+        return ieb_socket_fail(SocketBase, error);
+    if (fd1 != -1 && !SocketBase->dTableUsed[fd1])
+        return ieb_socket_fail(SocketBase, EBADF);
+    if (fd2 != -1 && (error = ieb_socket_validate_fd(SocketBase, fd2)) != 0)
+        return ieb_socket_fail(SocketBase, error);
+    if (fd1 == fd2)
+        return fd2;
+    if (fd2 != -1)
+    {
+        if (SocketBase->dTableUsed[fd2])
+        {
+            if ((error = ieb_socket_finish_free(SocketBase, fd2)) != 0)
+                return error;
+        }
+        if ((error = ieb_fd_callback(SocketBase, fd2, FDCB_CHECK)) != 0)
+            return ieb_socket_fail(SocketBase, error);
+    }
+
     req_clear(&req);
     req.a[IEBSD_REQ_AUX1] = fd1;
     req.a[IEBSD_REQ_AUX2] = fd2;
-    return ieb_socket_call(SocketBase, IE_SOCK_CMD_DUP2, &req);
+    newfd = ieb_socket_call(SocketBase, IE_SOCK_CMD_DUP2, &req);
+    if (newfd < 0)
+        return newfd;
+    return ieb_socket_finish_alloc(SocketBase, newfd);
     AROS_LIBFUNC_EXIT
 }
 
@@ -650,24 +829,65 @@ AROS_LH1(ULONG, SocketBaseTagList,
 {
     AROS_LIBFUNC_INIT
     struct TagItem *tag;
+    UWORD tagCode;
+    IPTR *tagData;
     ULONG errIndex = 0;
     ULONG index = 0;
+    static const char errUnknown[] = "Unknown error";
+    static const char errNoError[] = "No error";
+    static const char errBadf[] = "Bad file descriptor";
+    static const char errInval[] = "Invalid argument";
+    static const char errMsgSize[] = "Message too long";
+    static const char errOpNotSupp[] = "Operation not supported";
+    static const char errNoSys[] = "Function not implemented";
+    static const char herrHostNotFound[] = "Host not found";
+    static const char herrNoRecovery[] = "Non-recoverable resolver error";
 
-    while ((tag = NextTagItem(&tagList)) != NULL)
+    while ((tag = ieb_next_tag_item(&tagList)) != NULL)
     {
-        ULONG code = tag->ti_Tag & ~(TAG_USER | SBTF_REF);
-        IPTR *ref = (IPTR *)tag->ti_Data;
-        IPTR value = tag->ti_Data;
+        IPTR value;
 
-        if (tag->ti_Tag & SBTF_SET)
+        if (!(tag->ti_Tag & TAG_USER))
         {
-            switch (code)
+            index++;
+            continue;
+        }
+
+        tagCode = (UWORD)(tag->ti_Tag & ~SBTF_REF);
+        tagData = (tag->ti_Tag & SBTF_REF) ? (IPTR *)tag->ti_Data : &tag->ti_Data;
+        value = tagData ? *tagData : 0;
+
+        if (tagCode & SBTF_SET)
+        {
+            switch (tagCode)
             {
                 case (SBTC_ERRNO << SBTB_CODE) | SBTF_SET:
                     ieb_socket_set_errno(SocketBase, value);
                     break;
                 case (SBTC_HERRNO << SBTB_CODE) | SBTF_SET:
                     ieb_socket_set_herrno(SocketBase, value);
+                    break;
+                case (SBTC_BREAKMASK << SBTB_CODE) | SBTF_SET:
+                    SocketBase->sigIntrMask = value;
+                    break;
+                case (SBTC_DTABLESIZE << SBTB_CODE) | SBTF_SET:
+                    if ((ULONG)value > 0 && (ULONG)value <= IEBSD_DTABLE_SIZE)
+                        SocketBase->dTableSize = value;
+                    break;
+                case (SBTC_FDCALLBACK << SBTB_CODE) | SBTF_SET:
+                    SocketBase->fdCallback = value;
+                    break;
+                case (SBTC_LOGSTAT << SBTB_CODE) | SBTF_SET:
+                    SocketBase->logStat = (UBYTE)value;
+                    break;
+                case (SBTC_LOGTAGPTR << SBTB_CODE) | SBTF_SET:
+                    SocketBase->logTag = value;
+                    break;
+                case (SBTC_LOGFACILITY << SBTB_CODE) | SBTF_SET:
+                    SocketBase->logFacility = (UWORD)value;
+                    break;
+                case (SBTC_LOGMASK << SBTB_CODE) | SBTF_SET:
+                    SocketBase->logMask = (UBYTE)value;
                     break;
                 case (SBTC_ERRNOBYTEPTR << SBTB_CODE) | SBTF_SET:
                     if (value)
@@ -715,52 +935,85 @@ AROS_LH1(ULONG, SocketBaseTagList,
         }
         else
         {
-            if ((tag->ti_Tag & SBTF_REF) && ref)
+            if (tagData)
             {
-                switch (code)
+                switch (tagCode)
                 {
                     case SBTC_ERRNO << SBTB_CODE:
-                        *ref = ieb_socket_get_errno(SocketBase);
+                        *tagData = ieb_socket_get_errno(SocketBase);
                         break;
                     case SBTC_HERRNO << SBTB_CODE:
-                        *ref = SocketBase->hErrnoPtr ? *SocketBase->hErrnoPtr : 0;
+                        *tagData = SocketBase->hErrnoPtr ? *SocketBase->hErrnoPtr : 0;
                         break;
                     case SBTC_DTABLESIZE << SBTB_CODE:
-                        *ref = IEBSD_DTABLE_SIZE;
+                        *tagData = SocketBase->dTableSize;
+                        break;
+                    case SBTC_BREAKMASK << SBTB_CODE:
+                        *tagData = SocketBase->sigIntrMask;
+                        break;
+                    case SBTC_SIGIOMASK << SBTB_CODE:
+                        *tagData = SocketBase->sigIOMask;
+                        break;
+                    case SBTC_SIGURGMASK << SBTB_CODE:
+                        *tagData = SocketBase->sigUrgMask;
+                        break;
+                    case SBTC_SIGEVENTMASK << SBTB_CODE:
+                        *tagData = SocketBase->sigEventMask;
+                        break;
+                    case SBTC_FDCALLBACK << SBTB_CODE:
+                        *tagData = SocketBase->fdCallback;
+                        break;
+                    case SBTC_LOGSTAT << SBTB_CODE:
+                        *tagData = SocketBase->logStat;
+                        break;
+                    case SBTC_LOGTAGPTR << SBTB_CODE:
+                        *tagData = SocketBase->logTag;
+                        break;
+                    case SBTC_LOGFACILITY << SBTB_CODE:
+                        *tagData = SocketBase->logFacility;
+                        break;
+                    case SBTC_LOGMASK << SBTB_CODE:
+                        *tagData = SocketBase->logMask;
                         break;
                     case SBTC_HERRNOLONGPTR << SBTB_CODE:
-                        *ref = (IPTR)SocketBase->hErrnoPtr;
+                        *tagData = (IPTR)SocketBase->hErrnoPtr;
                         break;
                     case SBTC_RELEASESTRPTR << SBTB_CODE:
-                        *ref = (IPTR)"IE bsdsocket.library 4.0";
+                        *tagData = (IPTR)"IE bsdsocket.library 4.0";
+                        break;
+                    case SBTC_ERRNOSTRPTR << SBTB_CODE:
+                        switch ((LONG)value)
+                        {
+                            case 0: *tagData = (IPTR)errNoError; break;
+                            case EBADF: *tagData = (IPTR)errBadf; break;
+                            case EINVAL: *tagData = (IPTR)errInval; break;
+                            case EMSGSIZE: *tagData = (IPTR)errMsgSize; break;
+                            case EOPNOTSUPP: *tagData = (IPTR)errOpNotSupp; break;
+                            case ENOSYS: *tagData = (IPTR)errNoSys; break;
+                            default: *tagData = (IPTR)errUnknown; break;
+                        }
+                        break;
+                    case SBTC_HERRNOSTRPTR << SBTB_CODE:
+                        switch ((LONG)value)
+                        {
+                            case 0: *tagData = (IPTR)errNoError; break;
+                            case HOST_NOT_FOUND: *tagData = (IPTR)herrHostNotFound; break;
+                            case NO_RECOVERY: *tagData = (IPTR)herrNoRecovery; break;
+                            default: *tagData = (IPTR)errUnknown; break;
+                        }
                         break;
                     case SBTC_HAVE_DNS_API << SBTB_CODE:
                     case SBTC_HAVE_ADDRESS_CONVERSION_API << SBTB_CODE:
-                        *ref = TRUE;
+                        *tagData = TRUE;
                         break;
                     case SBTC_HAVE_ROUTING_API << SBTB_CODE:
                     case SBTC_HAVE_INTERFACE_API << SBTB_CODE:
                     case SBTC_HAVE_MONITORING_API << SBTB_CODE:
-                        *ref = FALSE;
-                        break;
-                    default:
-                        if (!errIndex)
-                            errIndex = index + 1;
-                        break;
-                }
-            }
-            else
-            {
-                switch (code)
-                {
-                    case SBTC_ERRNO << SBTB_CODE:
-                        tag->ti_Data = ieb_socket_get_errno(SocketBase);
-                        break;
-                    case SBTC_HERRNO << SBTB_CODE:
-                        tag->ti_Data = SocketBase->hErrnoPtr ? *SocketBase->hErrnoPtr : 0;
-                        break;
-                    case SBTC_DTABLESIZE << SBTB_CODE:
-                        tag->ti_Data = IEBSD_DTABLE_SIZE;
+                    case SBTC_HAVE_STATUS_API << SBTB_CODE:
+                    case SBTC_HAVE_LOCAL_DATABASE_API << SBTB_CODE:
+                    case SBTC_HAVE_KERNEL_MEMORY_API << SBTB_CODE:
+                    case SBTC_HAVE_SERVER_API << SBTB_CODE:
+                        *tagData = FALSE;
                         break;
                     default:
                         if (!errIndex)

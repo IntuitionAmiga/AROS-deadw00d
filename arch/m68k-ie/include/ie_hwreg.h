@@ -356,6 +356,9 @@
 #define IE_SOCK_CMD_GETHOSTNAME     18
 #define IE_SOCK_CMD_DUP2            19
 #define IE_SOCK_CMD_GETEVENTS       20
+#define IE_SOCK_CMD_RELEASE         21
+#define IE_SOCK_CMD_RELEASECOPY     22
+#define IE_SOCK_CMD_OBTAIN          23
 
 #define IE_SOCK_STATUS_READY    0
 #define IE_SOCK_STATUS_BUSY     1

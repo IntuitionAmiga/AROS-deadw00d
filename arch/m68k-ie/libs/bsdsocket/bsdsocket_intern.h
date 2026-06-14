@@ -62,6 +62,13 @@ struct IEBSDSocketBase
     ULONG          sigIOMask;
     ULONG          sigUrgMask;
     ULONG          sigEventMask;
+    ULONG          dTableSize;
+    IPTR           fdCallback;
+    IPTR           logTag;
+    UBYTE          logStat;
+    UWORD          logFacility;
+    UBYTE          logMask;
+    UBYTE          dTableUsed[IEBSD_DTABLE_SIZE];
     char           inet_ntoa[20];
     struct hostent hostent;
     char           hostName[IEBSD_HOST_NAME_SIZE];
