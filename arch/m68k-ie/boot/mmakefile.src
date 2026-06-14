@@ -60,6 +60,7 @@ include $(SRCDIR)/config/aros.cfg
 #MM     workbench-libs-mathffp-kobj \
 #MM     workbench-libs-mathieeesingbas-kobj \
 #MM     kernel-iewarp-kobj \
+#MM     kernel-ie-m68k-bsdsocket-kobj \
 #MM     linklibs-loadseg \
 #MM     linklibs-stdc-static \
 #MM     compiler-crt \
@@ -140,7 +141,7 @@ FILES   :=
 AFILES  :=
 
 KLIBS   := keymap graphics layers intuition gadtools icon workbench cybergraphics \
-           mathffp mathieeesingbas iewarp setpatch
+           mathffp mathieeesingbas iewarp bsdsocket setpatch
 KDEVS   :=
 KHNDLRS :=
 KHIDDS  := bus storage system

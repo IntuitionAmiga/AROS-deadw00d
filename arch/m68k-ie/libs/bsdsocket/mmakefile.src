@@ -1,0 +1,14 @@
+include $(SRCDIR)/config/aros.cfg
+
+IEBSD_ARCH_INCDIR := $(SRCDIR)/arch/m68k-ie/include
+IEBSD_NET_INCDIR := $(SRCDIR)/workbench/network/common/include
+
+FILES := bsdsocket_init bsdsocket_dispatch bsdsocket_inet
+
+USER_INCLUDES := -I$(IEBSD_ARCH_INCDIR) -I$(IEBSD_NET_INCDIR)
+
+%build_module_library mmake=kernel-ie-m68k-bsdsocket \
+  modname=bsdsocket modtype=library \
+  files="$(FILES)"
+
+%common

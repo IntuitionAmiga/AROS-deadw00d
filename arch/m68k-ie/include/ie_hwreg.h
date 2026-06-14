@@ -316,6 +316,52 @@
 #define IE_CLIP_STATUS_ERROR    3
 
 /* ========================================================================
+ * AROS Host Socket MMIO (0xF2500 - 0xF257F)
+ * ======================================================================== */
+
+#define IE_SOCK_BASE            0xF2500
+#define IE_SOCK_CMD             0xF2500     /* Command code, write triggers action */
+#define IE_SOCK_REQ_PTR         0xF2504     /* Guest request descriptor pointer */
+#define IE_SOCK_REQ_LEN         0xF2508     /* Guest request descriptor length */
+#define IE_SOCK_RES1            0xF250C     /* Primary result */
+#define IE_SOCK_RES2            0xF2510     /* Secondary result */
+#define IE_SOCK_ERRNO           0xF2514     /* BSD socket errno */
+#define IE_SOCK_HERRNO          0xF2518     /* Resolver h_errno */
+#define IE_SOCK_STATUS          0xF251C     /* Status: 0=ready */
+#define IE_SOCK_EVENTS          0xF2520     /* Pending readiness/event bits */
+
+#define IE_SOCK_BLOCK_SIZE      0x80
+#define IE_SOCK_END             0xF257F
+
+/* Socket command codes. One command consumes one fixed big-endian
+ * descriptor unless noted otherwise in arch/m68k-ie/libs/bsdsocket/README.md.
+ */
+#define IE_SOCK_CMD_SOCKET          1
+#define IE_SOCK_CMD_BIND            2
+#define IE_SOCK_CMD_LISTEN          3
+#define IE_SOCK_CMD_ACCEPT          4
+#define IE_SOCK_CMD_CONNECT         5
+#define IE_SOCK_CMD_SENDTO          6
+#define IE_SOCK_CMD_RECVFROM        7
+#define IE_SOCK_CMD_SHUTDOWN        8
+#define IE_SOCK_CMD_SETSOCKOPT      9
+#define IE_SOCK_CMD_GETSOCKOPT      10
+#define IE_SOCK_CMD_GETSOCKNAME     11
+#define IE_SOCK_CMD_GETPEERNAME     12
+#define IE_SOCK_CMD_IOCTL           13
+#define IE_SOCK_CMD_CLOSE           14
+#define IE_SOCK_CMD_WAITSELECT      15
+#define IE_SOCK_CMD_GETHOSTBYNAME   16
+#define IE_SOCK_CMD_GETHOSTBYADDR   17
+#define IE_SOCK_CMD_GETHOSTNAME     18
+#define IE_SOCK_CMD_DUP2            19
+#define IE_SOCK_CMD_GETEVENTS       20
+
+#define IE_SOCK_STATUS_READY    0
+#define IE_SOCK_STATUS_BUSY     1
+#define IE_SOCK_STATUS_ERROR    2
+
+/* ========================================================================
  * Memory Map
  * ======================================================================== */
 
